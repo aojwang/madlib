@@ -1,0 +1,143 @@
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_tendency
+    (
+	oid_column		TEXT,
+	did_column		TEXT,
+	sim_tables		TEXT[],	
+	sim_columns		TEXT[],
+	sim_weight		FLOAT8[],
+	final_sim_table TEXT
+	)
+RETURNS void AS $$
+DECLARE
+    stmt			TEXT;
+	sel_stmt		TEXT;
+	from_stmt		TEXT;
+	where_stmt		TEXT;
+BEGIN
+	
+	sel_stmt = MADLIB_SCHEMA.__format('t1.% as uid, t1.% as ruid,', ARRAY[oid_column, did_column]);
+	from_stmt = '';
+
+	FOR i IN 1..array_upper(sim_columns, 1) LOOP
+		sel_stmt = MADLIB_SCHEMA.__format
+				('% %_sim * % +', ARRAY[sel_stmt, sim_columns[i], sim_weight[i]::TEXT]);
+	END LOOP;
+
+	FOR i IN 1..array_upper(sim_tables, 1) LOOP
+		from_stmt = MADLIB_SCHEMA.__format
+				('% % t%,', ARRAY[from_stmt, sim_tables[i], i::TEXT]);
+	END LOOP;
+
+	from_stmt = rtrim(from_stmt, ',');
+	sel_stmt = rtrim(sel_stmt, '+') || 'AS tendency ';
+
+	where_stmt = '';
+	FOR i IN 2..array_upper(sim_tables, 1) LOOP
+		where_stmt = MADLIB_SCHEMA.__format
+				(
+					'% t%.% = t1.% AND t%.% = t1.% AND', 
+					ARRAY[
+						where_stmt, 
+						i::TEXT, 
+						oid_column,
+						oid_column,
+						i::TEXT,
+						did_column,
+						did_column
+					]);
+	END LOOP;
+
+	where_stmt = rtrim(where_stmt, 'AND');
+
+	RAISE INFO 'sel stmt:%', sel_stmt;
+	RAISE INFO 'where stmt:%', where_stmt;
+	RAISE INFO 'from stmt:%', from_stmt;
+
+	EXECUTE 'DROP TABLE IF EXISTS ' || final_sim_table;
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE % AS
+				 SELECT %
+				 FROM %
+				 WHERE %
+				 DISTRIBUTED BY(uid, ruid)',
+				ARRAY[
+					final_sim_table,
+					sel_stmt,
+					from_stmt,
+					where_stmt
+				]
+			);
+	
+	RAISE INFO 'tendency:%', stmt;
+
+	EXECUTE stmt;
+END
+$$ LANGUAGE PLPGSQL;
+
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_item_weig 
+    (
+	rate_table		TEXT,
+	rate_uid_column	TEXT,
+	rate_iid_column	TEXT,
+	rate_column		TEXT,
+	sim_table		TEXT,
+	sim_uid_column	TEXT,
+	sim_ruid_column	TEXT,
+	sim_column		TEXT,
+	item_weig_table TEXT
+	)
+RETURNS TEXT AS $$
+DECLARE
+    stmt			TEXT;
+	dict_table		TEXT := rate_table || '_dict';
+BEGIN
+	EXECUTE 'DROP TABLE IF EXISTS ' || item_weig_table;
+
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE % AS
+				 SELECT t1.% as uid, t1.% as iid, t1.%::FLOAT8 + coalesce(sum(tendency), 0) as weight
+				 FROM 
+					% t1 
+						LEFT JOIN 
+						(SELECT n1.% as new_uid, 
+								n2.% as new_iid, n1.tendency * n2.%::FLOAT8 as tendency
+						FROM % n1, % n2
+						WHERE n1.% = n2.%
+						) 
+					t2
+					ON
+						t1.% = t2.new_uid AND
+						t1.% = t2.new_iid
+				 GROUP BY (t1.%, t1.%, t1.%)
+				 DISTRIBUTED BY(uid)',
+				ARRAY[
+					item_weig_table,
+					rate_uid_column,
+					rate_iid_column,
+					rate_column,
+					rate_table,
+					sim_uid_column,
+					rate_iid_column,
+					rate_column,
+					sim_table,
+					rate_table,
+					sim_ruid_column,
+					rate_uid_column,
+					rate_uid_column,
+					rate_iid_column,
+					rate_uid_column,
+					rate_iid_column,
+					rate_column
+				]
+				 
+			);
+	RAISE INFO 'cal item weig:%', stmt;
+	EXECUTE stmt;
+
+	return item_weig_table;
+END
+$$ LANGUAGE PLPGSQL;
