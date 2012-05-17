@@ -1,0 +1,81 @@
+-- features tables have fixed name.
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.encode_features 
+    (
+	)
+RETURNS void AS $$
+DECLARE
+    
+BEGIN
+	PERFORM MADLIB_SCHEMA.encode_feature('item_category', 'iid', 'item_no');
+	PERFORM MADLIB_SCHEMA.encode_feature('user_keywords', 'keyword', 'user_keywords_no');
+	PERFORM MADLIB_SCHEMA.encode_feature('user_tags', 'tag', 'user_tags_no');
+END
+$$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_user_itemset_weight
+    (
+	training_table		TEXT,
+	tt_uid_column		TEXT,
+	tt_iid_column		TEXT,
+	tt_res_column		TEXT,
+	sim_cal_tables		TEXT[],
+	id_column			TEXT,
+	feature_columns		TEXT[],
+	weights_columns		TEXT[],
+	relation_table		TEXT,
+	rel_oid_column		TEXT,
+	rel_did_column		TEXT,
+	feat_weigs			FLOAT8[]
+	
+	)
+RETURNS void AS $$
+DECLARE
+   	features_tables		TEXT[] := ARRAY['user_keywords_no', 'user_tags_no'];
+	vsm_table			TEXT := 'user_sim';
+	tendency_table		TEXT := 'user_tendency';
+	item_weig_table		TEXT := 'user_itemset';
+BEGIN
+	PERFORM MADLIB_SCHEMA.encode_features();
+
+	PERFORM MADLIB_SCHEMA.cal_vsm
+		(
+			sim_cal_tables,
+			id_column,
+			feature_columns,
+			weights_columns,
+			relation_table,
+			rel_oid_column,
+			rel_did_column,
+			features_tables,
+			vsm_table
+		);
+
+	PERFORM  MADLIB_SCHEMA.cal_tendency
+		(
+			rel_oid_column,
+			rel_did_column,
+			ARRAY[vsm_table],	
+			feature_columns,
+			feat_weigs,
+			tendency_table 
+		);
+
+	PERFORM MADLIB_SCHEMA.cal_item_weig 
+		(
+			training_table,
+			tt_uid_column,
+			tt_iid_column,
+			tt_res_column,
+			tendency_table,
+			'uid',
+			'ruid',
+			'tendency',
+			item_weig_table
+		);
+
+	
+END
+$$ LANGUAGE PLPGSQL;
+
+
+
