@@ -56,7 +56,7 @@ PG_MODULE_MAGIC;
  * compare them directly with 0.
  */
 #define dt_is_float_zero(value)  \
-			((value) < DBL_EPSILON && (value) > -DBL_EPSILON)
+			((value) < 1E-10 && (value) > -1E-10)
 
 
 #define dt_check_error_value(condition, message, value) \
@@ -79,6 +79,161 @@ PG_MODULE_MAGIC;
 							) \
 						   ); \
 			} while (0)
+
+
+
+Datum
+condition_set
+    (
+    PG_FUNCTION_ARGS
+    )
+{
+	bool condition = PG_GETARG_BOOL(0);
+	float8 true_value = PG_GETARG_FLOAT8(1);
+	float8 false_value = PG_GETARG_FLOAT8(2);
+	float8 result = 0.0;
+
+	if (condition)
+		result = true_value;
+	else
+		result = false_value;
+
+	PG_RETURN_FLOAT8(result);
+}
+PG_FUNCTION_INFO_V1(condition_set);
+
+
+Datum
+equal_set
+    (
+    PG_FUNCTION_ARGS
+    )
+{
+	float8 real_value = PG_GETARG_FLOAT8(0);
+	float8 con_value = PG_GETARG_FLOAT8(1);
+	float8 set_value = PG_GETARG_FLOAT8(2);
+	float8 result = 0.0;
+
+	if (PG_ARGISNULL(0))
+		result = set_value;
+	else if (dt_is_float_zero(real_value - con_value))
+		result = set_value;
+	else if(!dt_is_float_zero(real_value - con_value))
+		result = real_value;
+
+	PG_RETURN_FLOAT8(result);
+}
+PG_FUNCTION_INFO_V1(equal_set);
+
+Datum
+less_set
+    (
+    PG_FUNCTION_ARGS
+    )
+{
+
+	float8 real_value = PG_GETARG_FLOAT8(0);
+	float8 con_value = PG_GETARG_FLOAT8(1);
+	float8 set_value = PG_GETARG_FLOAT8(2);
+	float8 result = 0.0;
+
+	if (PG_ARGISNULL(0))
+		result = set_value;
+	else if (real_value < con_value)
+		result = set_value;
+	else if(real_value > con_value)
+		result = real_value;
+
+	PG_RETURN_FLOAT8(result);
+}
+PG_FUNCTION_INFO_V1(less_set);
+
+Datum
+greater_set
+    (
+    PG_FUNCTION_ARGS
+    )
+{
+
+	float8 real_value = PG_GETARG_FLOAT8(0);
+	float8 con_value = PG_GETARG_FLOAT8(1);
+	float8 set_value = PG_GETARG_FLOAT8(2);
+	float8 result = 0.0;
+
+	if (PG_ARGISNULL(0))
+		result = set_value;
+	else if (real_value > con_value)
+		result = set_value;
+	else if(real_value < con_value)
+		result = real_value;
+
+	PG_RETURN_FLOAT8(result);
+}
+PG_FUNCTION_INFO_V1(greater_set);
+
+Datum
+is_float8_zero
+    (
+    PG_FUNCTION_ARGS
+    )
+{
+	float8 real_value = PG_GETARG_FLOAT8(0);
+	bool	result = 1;
+
+	if (PG_ARGISNULL(0))
+		result = 0;
+	else
+		result = dt_is_float_zero(real_value);
+
+	PG_RETURN_BOOL(result);
+}
+PG_FUNCTION_INFO_V1(is_float8_zero);
+
+
+Datum
+get_category_sim
+    (
+    PG_FUNCTION_ARGS
+    )
+{
+    ArrayType *cat1_array    = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType *cat2_array    = PG_GETARG_ARRAYTYPE_P(1);
+
+    int array_dim               = 0;
+    int *p_array_dim            = NULL;
+    int array_length            = 0;
+    float8 *cat1_data			= NULL;
+	float8 *cat2_data			= NULL;
+	float8 sim					= 1.0;
+
+    array_dim			= ARR_NDIM(cat1_array);
+    p_array_dim         = ARR_DIMS(cat1_array);
+    array_length        = ArrayGetNItems(array_dim,p_array_dim);
+    cat1_data           = (float8 *)ARR_DATA_PTR(cat1_array);
+
+    array_dim			= ARR_NDIM(cat2_array);
+    p_array_dim         = ARR_DIMS(cat2_array);
+    array_length        = ArrayGetNItems(array_dim,p_array_dim);
+    cat2_data           = (float8 *)ARR_DATA_PTR(cat2_array);
+	
+	//elog(NOTICE, "%lf, %lf, %lf, %lf", cat1_data[0], cat1_data[1], cat1_data[2], cat1_data[3]);
+	//elog(NOTICE, "%lf, %lf, %lf, %lf", cat2_data[0], cat2_data[1], cat2_data[2], cat2_data[3]);
+	
+	if (!dt_is_float_zero(cat1_data[0] - cat2_data[0]))
+		sim = 0;
+	else if (!dt_is_float_zero(cat1_data[1] - cat2_data[1]))
+		sim = (float8)1.0/15.0;
+	else if (!dt_is_float_zero(cat1_data[2] - cat2_data[2]))
+		sim = (float8)3.0/15.0;
+	else if (!dt_is_float_zero(cat1_data[3] - cat2_data[3]))
+		sim =  (float8)8.0/15.0;
+	else 
+		sim = 1.0;
+
+	PG_RETURN_FLOAT8((float8)sim);
+}
+PG_FUNCTION_INFO_V1(get_category_sim);
+
 
 /*
  * @brief Use % as the delimiter to split the given string. The char '\' is used

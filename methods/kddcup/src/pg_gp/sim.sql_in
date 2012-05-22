@@ -1,8 +1,18 @@
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_category_sim
+    (
+	FLOAT8[],
+	FLOAT8[]
+    )
+RETURNS FLOAT8 AS
+'MODULE_PATHNAME', 'get_category_sim'
+LANGUAGE C IMMUTABLE;
+
+
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_tendency
     (
 	oid_column		TEXT,
 	did_column		TEXT,
-	sim_tables		TEXT[],	
+	sim_table		TEXT,	
 	sim_columns		TEXT[],
 	sim_weight		FLOAT8[],
 	final_sim_table TEXT
@@ -12,60 +22,31 @@ DECLARE
     stmt			TEXT;
 	sel_stmt		TEXT;
 	from_stmt		TEXT;
-	where_stmt		TEXT;
 BEGIN
-	
-	sel_stmt = MADLIB_SCHEMA.__format('t1.% as uid, t1.% as ruid,', ARRAY[oid_column, did_column]);
-	from_stmt = '';
+	sel_stmt = MADLIB_SCHEMA.__format('SELECT % as uid, % as ruid,', ARRAY[oid_column, did_column]);
 
 	FOR i IN 1..array_upper(sim_columns, 1) LOOP
 		sel_stmt = MADLIB_SCHEMA.__format
-				('% %_sim * % +', ARRAY[sel_stmt, sim_columns[i], sim_weight[i]::TEXT]);
+				('% coalesce(%_sim, 0.0) * % +', ARRAY[sel_stmt, sim_columns[i], sim_weight[i]::TEXT]);
 	END LOOP;
 
-	FOR i IN 1..array_upper(sim_tables, 1) LOOP
-		from_stmt = MADLIB_SCHEMA.__format
-				('% % t%,', ARRAY[from_stmt, sim_tables[i], i::TEXT]);
-	END LOOP;
-
-	from_stmt = rtrim(from_stmt, ',');
+	from_stmt = ' FROM '|| sim_table || ' ';
 	sel_stmt = rtrim(sel_stmt, '+') || 'AS tendency ';
 
-	where_stmt = '';
-	FOR i IN 2..array_upper(sim_tables, 1) LOOP
-		where_stmt = MADLIB_SCHEMA.__format
-				(
-					'% t%.% = t1.% AND t%.% = t1.% AND', 
-					ARRAY[
-						where_stmt, 
-						i::TEXT, 
-						oid_column,
-						oid_column,
-						i::TEXT,
-						did_column,
-						did_column
-					]);
-	END LOOP;
-
-	where_stmt = rtrim(where_stmt, 'AND');
-
 	RAISE INFO 'sel stmt:%', sel_stmt;
-	RAISE INFO 'where stmt:%', where_stmt;
 	RAISE INFO 'from stmt:%', from_stmt;
 
 	EXECUTE 'DROP TABLE IF EXISTS ' || final_sim_table;
 	stmt = MADLIB_SCHEMA.__format
 			(
 				'CREATE TABLE % AS
-				 SELECT %
-				 FROM %
-				 WHERE %
+				  %
+				  %
 				 DISTRIBUTED BY(uid, ruid)',
 				ARRAY[
 					final_sim_table,
 					sel_stmt,
-					from_stmt,
-					where_stmt
+					from_stmt
 				]
 			);
 	
@@ -77,67 +58,138 @@ $$ LANGUAGE PLPGSQL;
 
 
 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_item_weig 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_user_itemset 
     (
-	rate_table		TEXT,
-	rate_uid_column	TEXT,
-	rate_iid_column	TEXT,
-	rate_column		TEXT,
-	sim_table		TEXT,
-	sim_uid_column	TEXT,
-	sim_ruid_column	TEXT,
-	sim_column		TEXT,
-	item_weig_table TEXT
+	rate_table			TEXT,
+	rate_uid_column		TEXT,
+	rate_iid_column		TEXT,
+	rate_column			TEXT,
+	sim_table			TEXT,
+	sim_uid_column		TEXT,
+	sim_ruid_column		TEXT,
+	sim_column			TEXT,
+	user_itemset_table	TEXT
 	)
 RETURNS TEXT AS $$
 DECLARE
-    stmt			TEXT;
-	dict_table		TEXT := rate_table || '_dict';
+    stmt				TEXT;
+	num_ids				INT;
+	itemset_tmp_table	TEXT := 'itemset_temp_table';
+	itemset_tmp_table2	TEXT := 'itemset_temp_table2';
+
 BEGIN
-	EXECUTE 'DROP TABLE IF EXISTS ' || item_weig_table;
+	EXECUTE 'DROP TABLE IF EXISTS ' || user_itemset_table;
+	EXECUTE 'DROP TABLE IF EXISTS ' || itemset_tmp_table;
+	EXECUTE 'DROP TABLE IF EXISTS ' || itemset_tmp_table2;
+
+	EXECUTE 'SELECT count(feat_no) FROM test.item_no' INTO num_ids;	
+
+	stmt = MADLIB_SCHEMA.__format
+		(
+			'CREATE TEMP TABLE %(uid, result) AS
+			 SELECT
+				% as uid, 
+			 	MADLIB_SCHEMA.svec_cast_positions_float8arr
+					(
+						array_agg(feat_no),
+						array_agg(%),
+						%,
+						0.0
+					) as result
+			 FROM 
+				% t1, test.item_no t2
+			 WHERE t1.% = t2.feature
+			 GROUP BY uid
+			 DISTRIBUTED BY(uid)',
+			ARRAY[
+				itemset_tmp_table,
+				rate_uid_column,
+				rate_column,
+				num_ids::TEXT,
+				rate_table,
+				rate_iid_column
+			]
+		);
+
+	RAISE INFO 'svec the training set: %', stmt;
+	EXECUTE stmt;
+
+	stmt = MADLIB_SCHEMA.__format
+		(
+			'CREATE TEMP TABLE %(uid, weight) AS
+			 SELECT n1.% as uid, 
+					MADLIB_SCHEMA.svec_sum
+						(MADLIB_SCHEMA.svec_mult_float8arr(n2.result, ARRAY[n1.%]::FLOAT8[])) as weight
+			 FROM % n1, % n2 
+			 WHERE n1.% = n2.uid
+			 GROUP BY n1.% 
+			 DISTRIBUTED BY (uid)',
+			ARRAY[
+				itemset_tmp_table2,
+				sim_uid_column,
+				sim_column,
+				sim_table,
+				itemset_tmp_table,
+				sim_ruid_column,
+				sim_uid_column
+			]
+		);
+	RAISE INFO '%', stmt;
+	EXECUTE stmt;
 
 	stmt = MADLIB_SCHEMA.__format
 			(
-				'CREATE TABLE % AS
-				 SELECT t1.% as uid, t1.% as iid, t1.%::FLOAT8 + coalesce(sum(tendency), 0) as weight
+				'CREATE TABLE %(uid, weight) AS
+				 SELECT 
+					t2.uid,
+					MADLIB_SCHEMA.svec_plus
+					(
+					coalesce(t1.result, ''{%}:{0.0}''::MADLIB_SCHEMA.svec),
+					coalesce(t2.weight, ''{%}:{0.0}''::MADLIB_SCHEMA.svec)
+					)as weight
 				 FROM 
-					% t1 
-						LEFT JOIN 
-						(SELECT n1.% as new_uid, 
-								n2.% as new_iid, n1.tendency * n2.%::FLOAT8 as tendency
-						FROM % n1, % n2
-						WHERE n1.% = n2.%
-						) 
-					t2
-					ON
-						t1.% = t2.new_uid AND
-						t1.% = t2.new_iid
-				 GROUP BY (t1.%, t1.%, t1.%)
+					% t1 RIGHT JOIN
+					% t2
+				 ON t1.uid = t2.uid
 				 DISTRIBUTED BY(uid)',
 				ARRAY[
-					item_weig_table,
-					rate_uid_column,
-					rate_iid_column,
-					rate_column,
-					rate_table,
-					sim_uid_column,
-					rate_iid_column,
-					rate_column,
-					sim_table,
-					rate_table,
-					sim_ruid_column,
-					rate_uid_column,
-					rate_uid_column,
-					rate_iid_column,
-					rate_uid_column,
-					rate_iid_column,
-					rate_column
+					user_itemset_table,
+					num_ids::TEXT,
+					num_ids::TEXT,
+					itemset_tmp_table,
+					itemset_tmp_table2
 				]
 				 
 			);
-	RAISE INFO 'cal item weig:%', stmt;
+	RAISE INFO 'user item set:%', stmt;
 	EXECUTE stmt;
 
-	return item_weig_table;
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'INSERT INTO %
+				 SELECT 
+					*
+				 FROM 
+					% 
+				 WHERE uid IN
+					(SELECT uid FROM % EXCEPT 
+					 SELECT uid FROM % )',
+				ARRAY[
+					user_itemset_table,
+					itemset_tmp_table,
+					itemset_tmp_table,
+					user_itemset_table
+				]
+			);
+	RAISE INFO 'user item set:%', stmt;
+	EXECUTE stmt;
+
+	EXECUTE 'DROP TABLE IF EXISTS ' || itemset_tmp_table;
+	EXECUTE 'DROP TABLE IF EXISTS ' || itemset_tmp_table2;
+	
+	return user_itemset_table;
 END
 $$ LANGUAGE PLPGSQL;
+
+
+

@@ -8,6 +8,143 @@
  *//* ----------------------------------------------------------------------- */
 
 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.is_float8_zero
+    (
+	FLOAT8
+    )
+RETURNS BOOLEAN AS
+'MODULE_PATHNAME', 'is_float8_zero'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.condition_set
+    (
+	BOOLEAN,
+	FLOAT8,
+	FLOAT8
+    )
+RETURNS FLOAT8 AS
+'MODULE_PATHNAME', 'condition_set'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.equal_set
+    (
+	FLOAT8,
+	FLOAT8,
+	FLOAT8
+    )
+RETURNS FLOAT8 AS
+'MODULE_PATHNAME', 'equal_set'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.less_set
+    (
+	FLOAT8,
+	FLOAT8,
+	FLOAT8
+    )
+RETURNS FLOAT8 AS
+'MODULE_PATHNAME', 'less_set'
+LANGUAGE C IMMUTABLE;
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.greater_set
+    (
+	FLOAT8,
+	FLOAT8,
+	FLOAT8
+    )
+RETURNS FLOAT8 AS
+'MODULE_PATHNAME', 'greater_set'
+LANGUAGE C IMMUTABLE;
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.first_elem_sfun
+    (
+    result	INT,
+	input	INT
+    ) 
+RETURNS INT AS $$
+DECLARE
+BEGIN
+	IF (result IS NULL) THEN
+		RETURN input;
+	END IF;
+
+	RETURN result;
+END
+$$ LANGUAGE PLPGSQL;
+
+
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.first_elem
+    (
+    INT
+	) CASCADE;
+
+CREATE ORDERED 
+AGGREGATE MADLIB_SCHEMA.first_elem
+    (
+	INT
+    ) 
+(
+  SFUNC=MADLIB_SCHEMA.first_elem_sfun,
+  STYPE=INT
+);
+
+DROP TYPE IF EXISTS MADLIB_SCHEMA.top3_elems CASCADE;
+CREATE TYPE MADLIB_SCHEMA.top3_elems AS
+	(
+		top1_elem	INT,
+		top2_elem	INT,
+		top3_elem	INT,
+		top1_rate	FLOAT8,
+		top2_rate	FLOAT8,
+		top3_rate	FLOAT8
+	);
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_top3_elems_sfun
+    (
+    result	MADLIB_SCHEMA.top3_elems,
+	elem	INT,
+	rate	FLOAT8
+    ) 
+RETURNS MADLIB_SCHEMA.top3_elems AS $$
+DECLARE
+BEGIN
+	IF (result.top1_elem IS NULL) THEN
+		result.top1_elem = elem;
+		result.top1_rate = rate;
+	ELSIF (result.top2_elem IS NULL) THEN
+		result.top2_elem = elem;
+		result.top2_rate = rate;
+	ELSIF (result.top3_elem IS NULL) THEN
+		result.top3_elem = elem;
+		result.top3_rate = rate;
+	ELSE
+	END IF;
+
+	RETURN result;
+END
+$$ LANGUAGE PLPGSQL;
+
+
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.cal_top3_elems
+    (
+    INT,
+	FLOAT8
+	) 
+CASCADE;
+
+CREATE ORDERED 
+AGGREGATE MADLIB_SCHEMA.cal_top3_elems
+    (
+	INT,
+	FLOAT8
+    ) 
+(
+  SFUNC=MADLIB_SCHEMA.cal_top3_elems_sfun,
+  STYPE=MADLIB_SCHEMA.top3_elems
+);
+
 /*
  * @brief Cast any value to text.
  *

@@ -6,76 +6,590 @@ RETURNS void AS $$
 DECLARE
     
 BEGIN
-	PERFORM MADLIB_SCHEMA.encode_feature('item_category', 'iid', 'item_no');
-	PERFORM MADLIB_SCHEMA.encode_feature('user_keywords', 'keyword', 'user_keywords_no');
-	PERFORM MADLIB_SCHEMA.encode_feature('user_tags', 'tag', 'user_tags_no');
+	PERFORM MADLIB_SCHEMA.encode_feature('kddcup.item_category', 'iid', 'test.item_no');
+	PERFORM MADLIB_SCHEMA.encode_feature('kddcup.item_keywords', 'keyword', 'test.item_keywords_no');	
+	PERFORM MADLIB_SCHEMA.encode_feature('kddcup.user_keywords', 'keyword', 'test.user_keywords_no');
+	PERFORM MADLIB_SCHEMA.encode_feature('kddcup.user_tags', 'tag', 'test.user_tags_no');
+	PERFORM MADLIB_SCHEMA.encode_feature('kddcup.user_sns', 'fee_uid', 'test.user_sns_fee_no');
+	--PERFORM MADLIB_SCHEMA.encode_feature('(select keyword from kddcup.user_keywords group by keyword UNION select keyword from kddcup.item_keywords group by keyword) t', 'keyword', 'test.all_keywords_no');	
 END
 $$ LANGUAGE PLPGSQL;
 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_user_itemset_weight
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.get_relevance_table()
+RETURNS TEXT AS $$
+BEGIN
+        EXECUTE 'DROP TABLE IF EXISTS kddcup.user_relevance CASCADE';
+
+		-- get the relevance uids from sns table and action table
+		-- the uids which is not in the test sets will be excluded.
+        EXECUTE 'CREATE TABLE kddcup.user_relevance(uid, ruid, flag) AS
+                         SELECT uid, ruid, sum(flag)::INT as flag
+                         FROM 
+							(SELECT fer_uid as uid, fee_uid as ruid, 1::INT as flag 
+							 FROM kddcup.user_sns 
+							 GROUP BY uid, ruid
+							 UNION ALL
+							 SELECT uid, des_uid as ruid, 2::INT as flag
+							 FROM kddcup.user_action
+							 WHERE num_ats > 0 OR num_retweets > 0 OR num_comments > 0
+							 GROUP BY uid, ruid
+							) t1
+						 WHERE uid IN (SELECT uid from kddcup.all_rec_users)
+                         GROUP BY uid, ruid
+                         DISTRIBUTED BY(uid, ruid)';
+
+        RETURN 'kddcup.user_relevance';
+END
+$$ LANGUAGE PLPGSQL;
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_user_sim
     (
-	training_table		TEXT,
-	tt_uid_column		TEXT,
-	tt_iid_column		TEXT,
-	tt_res_column		TEXT,
-	sim_cal_tables		TEXT[],
-	id_column			TEXT,
-	feature_columns		TEXT[],
-	weights_columns		TEXT[],
-	relation_table		TEXT,
-	rel_oid_column		TEXT,
-	rel_did_column		TEXT,
-	feat_weigs			FLOAT8[]
-	
+	user_sim_table		TEXT
 	)
 RETURNS void AS $$
 DECLARE
-   	features_tables		TEXT[] := ARRAY['user_keywords_no', 'user_tags_no'];
-	vsm_table			TEXT := 'user_sim';
-	tendency_table		TEXT := 'user_tendency';
-	item_weig_table		TEXT := 'user_itemset';
+	stmt				TEXT;
 BEGIN
-	PERFORM MADLIB_SCHEMA.encode_features();
+	EXECUTE 'DROP TABLE IF EXISTS ' || user_sim_table;
 
 	PERFORM MADLIB_SCHEMA.cal_vsm
-		(
-			sim_cal_tables,
-			id_column,
-			feature_columns,
-			weights_columns,
-			relation_table,
-			rel_oid_column,
-			rel_did_column,
-			features_tables,
-			vsm_table
-		);
+			(
+				'kddcup.user_keywords',
+				'uid',
+				'keyword',
+				'weight',
+				'kddcup.user_relevance',
+				'uid',
+				'ruid',
+				'test.user_keywords_no',
+				'user_keyword_vsm'
+			);
+	
+	PERFORM MADLIB_SCHEMA.cal_vsm
+			(
+				'kddcup.user_tags',
+				'uid',
+				'tag',
+				'weight',
+				'kddcup.user_relevance',
+				'uid',
+				'ruid',
+				'test.user_tags_no',
+				'user_tag_vsm'
+			);
+	
 
-	PERFORM  MADLIB_SCHEMA.cal_tendency
+	PERFORM MADLIB_SCHEMA.cal_common_followers
 		(
-			rel_oid_column,
-			rel_did_column,
-			ARRAY[vsm_table],	
-			feature_columns,
-			feat_weigs,
-			tendency_table 
-		);
-
-	PERFORM MADLIB_SCHEMA.cal_item_weig 
-		(
-			training_table,
-			tt_uid_column,
-			tt_iid_column,
-			tt_res_column,
-			tendency_table,
+			'kddcup.user_sns',
+			'fer_uid',
+			'fee_uid',
+			'test.user_sns_fee_no',
+			'kddcup.user_relevance',
 			'uid',
 			'ruid',
-			'tendency',
-			item_weig_table
+			'common_fo'
 		);
 
+	PERFORM MADLIB_SCHEMA.cal_interaction
+		(
+			'kddcup.user_action', 
+			'uid', 
+			'des_uid', 
+			'num_ats', 
+			'num_retweets', 
+			'num_comments', 
+			'kddcup.user_relevance', 
+			'uid', 
+			'ruid', 
+			'action_total', 
+			'user_interaction'
+		);
+
+
+	EXECUTE 'DROP TABLE IF EXISTS ' || user_sim_table;
+	
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE %(uid, ruid, keyword_sim, tag_sim, com_sim, int_sim) AS
+				 SELECT n1.uid, n1.ruid, 
+					coalesce(n1.keyword_sim, 0) as keyword_sim, 
+					coalesce(n1.tag_sim, 0) as tag_sim,
+					coalesce(n2.com_sim, 0) as com_sim, 
+					coalesce(n2.int_sim, 0) as int_sim
+				 FROM 
+					(
+					SELECT t1.uid, t1.ruid, t1.keyword_sim, t2.tag_sim
+					FROM user_keyword_vsm t1 FULL OUTER JOIN user_tag_vsm t2
+					ON t1.uid = t2.uid AND t1.ruid = t2.ruid
+					) n1 
+					FULL OUTER JOIN
+					(
+					SELECT t1.uid, t1.ruid, t1.com_sim, t2.int_sim
+					FROM common_fo t1 FULL OUTER JOIN user_interaction t2
+					ON t1.uid = t2.uid AND t1.ruid = t2.ruid
+					) n2
+					ON n1.uid = n2.uid AND n1.ruid = n2.ruid
+				 DISTRIBUTED BY (uid, ruid)',
+				ARRAY[
+					user_sim_table
+				]
+			);
+	EXECUTE stmt;
+
+	EXECUTE 'DROP TABLE IF EXISTS  user_keyword_vsm';
+	EXECUTE 'DROP TABLE IF EXISTS  user_tag_vsm';
+	EXECUTE 'DROP TABLE IF EXISTS  common_fo';
+	EXECUTE 'DROP TABLE IF EXISTS  user_interaction';
+
+END
+$$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_item_sim
+    (
+	item_sim_table		TEXT
+	)
+RETURNS void AS $$
+DECLARE
+	stmt				TEXT;
+	key_sim_table		TEXT := 'item_key_sim';
+	cat_sim_table		TEXT := 'item_cat_sim';
+	num_item_ids		INT;
+BEGIN
+	EXECUTE 'DROP TABLE IF EXISTS ' || item_sim_table;
+
+	PERFORM MADLIB_SCHEMA.cal_vsm_self 
+		(
+			'kddcup.item_keywords',
+			'iid',
+			'keyword',
+			'test.item_keywords_no',
+			'test.item_no',
+			key_sim_table
+		);
+
+	EXECUTE 'SELECT count(feat_no) FROM test.item_no' INTO num_item_ids;
+
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE %(iid, cat_sim) AS
+				 SELECT t1.iid, 
+						MADLIB_SCHEMA.svec_cast_positions_float8arr
+							(
+							array_agg(feat_no), 
+							array_agg
+								(
+									MADLIB_SCHEMA.cal_category_sim
+										(
+											string_to_array(t1.category, ''.'')::FLOAT8[],
+											string_to_array(t2.category, ''.'')::FLOAT8[]
+										) 
+								)::FLOAT8[],
+							%, 
+							0.0
+							) as cat_sim
+				 FROM 
+					kddcup.item_category t1, 
+					(
+						SELECT feat_no, category
+						FROM kddcup.item_category n1, test.item_no n2
+						WHERE n1.iid = n2.feature
+					)t2
+				 GROUP BY t1.iid
+				 DISTRIBUTED BY(iid)',
+				ARRAY[
+					cat_sim_table,
+					num_item_ids::TEXT
+				]
+			);
+
+	EXECUTE stmt;
+
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE %(iid, cat_sim, keyword_sim) AS
+				 SELECT n1.iid, 
+					coalesce(cat_sim, ''{%}:{0.0}''::MADLIB_SCHEMA.svec) as cat_sim,  
+					coalesce(keyword_sim, ''{%}:{0.0}''::MADLIB_SCHEMA.svec) as keyword_sim
+				 FROM
+					% n1 FULL OUTER JOIN % n2
+				    ON n1.iid = n2.iid 
+				 DISTRIBUTED BY(iid)',
+				ARRAY[
+					item_sim_table,
+					num_item_ids::TEXT,
+					num_item_ids::TEXT,
+					key_sim_table,
+					cat_sim_table
+				]
+			);
+	
+	RAISE INFO 'Cat and keyword sim: %', stmt;
+	EXECUTE stmt;
+
+	EXECUTE 'DROP TABLE IF EXISTS ' || key_sim_table;
+	EXECUTE 'DROP TABLE IF EXISTS ' || cat_sim_table;
 	
 END
 $$ LANGUAGE PLPGSQL;
 
 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_item_tendency
+    (
+	item_sim_table		TEXT,
+	item_keyword_weight	FLOAT8,
+	item_cat_weigth		FLOAT8,
+	item_tendency_table	TEXT
+	)
+RETURNS void AS $$
+DECLARE
+	stmt				TEXT;
+	num_item_ids		INT;
+BEGIN
+	EXECUTE 'DROP TABLE IF EXISTS ' || item_tendency_table;
+
+	EXECUTE 'SELECT count(feat_no) FROM test.item_no' INTO num_item_ids;
+
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE % AS
+				 SELECT 
+					iid, 
+					MADLIB_SCHEMA.svec_plus
+					(
+						coalesce(MADLIB_SCHEMA.svec_mult_float8arr(cat_sim, ARRAY[%]::FLOAT8[]), ''{%}:{0.0}''::MADLIB_SCHEMA.svec),
+						coalesce(MADLIB_SCHEMA.svec_mult_float8arr(keyword_sim, ARRAY[%]::FLOAT8[]), ''{%}:{0.0}''::MADLIB_SCHEMA.svec)
+					) as sim
+				 FROM %
+				 DISTRIBUTED BY(iid)',
+				ARRAY[
+					item_tendency_table,
+					item_cat_weigth::TEXT,
+					num_item_ids::TEXT,
+					item_keyword_weight::TEXT,
+					num_item_ids::TEXT,
+					item_sim_table
+				]
+			);	
+	RAISE INFO 'cal item tendency: %', stmt;
+	EXECUTE stmt;
+END
+$$ LANGUAGE PLPGSQL;
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_top3
+    (
+	training_table		TEXT,
+	test_table			TEXT,
+	itemset_table		TEXT,
+	item_sim_table		TEXT,
+	top3_table			TEXT
+	)
+RETURNS void AS $$
+DECLARE
+	stmt		TEXT;
+	rec			RECORD;
+BEGIN
+	EXECUTE 'DROP TABLE IF EXISTS ' || top3_table;
+	EXECUTE 'DROP TABLE IF EXISTS top3_tmp_table';
+
+	stmt = MADLIB_SCHEMA.__format
+		(
+			'CREATE TABLE top3_tmp_table AS
+			 SELECT t1.uid,
+					t1.iid,
+					MADLIB_SCHEMA.svec_dot(weight, sim) as rate
+			 FROM % t1, % t2, % t3 
+			 WHERE t1.uid = t2.uid AND
+				t1.iid = t3.iid
+			 DISTRIBUTED BY(uid, iid)',
+			ARRAY[
+				test_table,
+				itemset_table,
+				item_sim_table
+			]
+		);
+	
+	RAISE INFO 'top3 tmp stmt :%', stmt;
+	EXECUTE stmt;
+
+	stmt = MADLIB_SCHEMA.__format
+		(
+			'CREATE TABLE % AS
+			 SELECT uid,
+					(MADLIB_SCHEMA.cal_top3_elems(iid, rate ORDER BY rate DESC)).*
+			 FROM top3_tmp_table
+			 GROUP BY uid
+			 DISTRIBUTED BY(uid)',
+			 ARRAY[
+				top3_table
+			 ]
+		);
+	RAISE INFO 'top3 final:%', stmt;
+
+	EXECUTE stmt;
+
+	EXECUTE 'DROP TABLE IF EXISTS only_keyword_uid_iid';
+
+	stmt = MADLIB_SCHEMA.__format
+		(
+			'CREATE TEMP TABLE only_keyword_uid_iid AS
+			 SELECT uid, iid
+			 FROM %
+			 WHERE uid IN
+				(
+				SELECT uid FROM % GROUP BY uid EXCEPT
+				SELECT uid FROM % WHERE top1_rate > 0
+				)
+			 DISTRIBUTED BY(uid, iid)',
+			ARRAY[
+				test_table,
+				test_table,
+				top3_table
+			]
+		);
+	RAISE INFO '%', stmt;
+	EXECUTE stmt;
+
+	PERFORM MADLIB_SCHEMA.cal_vsm
+			(
+				'kddcup.user_keywords_dict',
+				'keyword',
+				'only_keyword_uid_iid',
+				'uid',
+				'iid',
+				'user_item_keyword_vsm'
+			);
+
+	stmt = MADLIB_SCHEMA.__format
+		(
+			'INSERT INTO %
+			 SELECT uid,
+				(MADLIB_SCHEMA.cal_top3_elems(iid, keyword_sim ORDER BY keyword_sim DESC)).*
+			 FROM user_item_keyword_vsm
+			 GROUP BY uid',
+			ARRAY[
+				top3_table
+			]
+
+		);
+	
+	RAISE INFO '%', stmt;
+	EXECUTE stmt;
+
+	EXECUTE 'DELETE FROM ' || top3_table || ' WHERE top1_rate < 0.000000001';
+
+	stmt = MADLIB_SCHEMA.__format
+		(
+			'INSERT INTO %
+			 SELECT uid, (MADLIB_SCHEMA.cal_top3_elems(t1.iid, rate ORDER BY rate DESC)).*
+			 FROM 
+				(SELECT uid, iid FROM % WHERE uid IN (SELECT uid FROM % GROUP BY uid HAVING sum(keyword_sim) < 0.000000001)) t1,
+				(SELECT iid, sum(result) as rate FROM % WHERE result = 1 GROUP BY iid) t2
+			 WHERE t1.iid = t2.iid
+			 GROUP BY uid
+			 ',
+			ARRAY[
+				top3_table,
+				'user_item_keyword_vsm',
+				'user_item_keyword_vsm',
+				training_table
+			]
+		);
+	
+	RAISE INFO '%', stmt;
+
+	EXECUTE stmt;
+	
+	-- simply deal with users that there are no similarity between the users and the items
+	-- rate with the item id :)
+	stmt = MADLIB_SCHEMA.__format
+		(
+			'INSERT INTO %
+			 SELECT uid, (MADLIB_SCHEMA.cal_top3_elems(iid, iid ORDER BY iid DESC)).*
+			 FROM
+			  (
+			   SELECT t2.uid, t2.iid 
+			   FROM 
+				(
+				 SELECT uid FROM % GROUP BY uid
+				 EXCEPT 
+				 SELECT uid FROM %
+				) t1, % t2 
+			   WHERE t1.uid = t2.uid
+			 )t
+			 GROUP BY uid',
+			ARRAY[
+				top3_table,
+				test_table,
+				top3_table,
+				test_table
+			]
+		);
+	
+	RAISE INFO '%', stmt;
+
+	EXECUTE stmt;
+
+END
+$$ LANGUAGE PLPGSQL;
+
+
+/*
+ * Based on the calculated similarities for items and users information, we assign the weight for each
+ * feature, so that we can get the top 3 items. If we don't change the calculation approach for those
+ * similarities, and we want to reassign the weights, then this function should be called(It will save 
+ * time on calculating similarities).
+ *
+ * training_table		The training dataset
+ * user_sim_table		It contains all the features(keyword, tag, etc)' similarity calculated by VSM.
+ *						the schema of this table is (uid, ruid, keyword_sim, tag_sim, ...) 
+ * user_sim_columns		Each element in this array will impact to the user tendency with its height 
+ *						specified in parameter user_sim_weights.
+ * user_sim_weights		The weights for the user_sim_columns. The size of this array must be the same
+ *						as that of user_sim_columns. They must be absolute consistency.
+ * item_sim_table		It contains all the featues(category and keyword)' similarity.
+ * item_sim_weights		the weights for the item. The first element is the weight of item's keyword, and
+ *						the second element is the weight of item's category.
+ * test_table			the test set table. If it's null, then top3_test_table will not be calculated
+ * final_table			the final table. If it's null, then top3_final_table will not be calcuated.
+ * top3_test_table		the result of runing test_table
+ * top3_final_table		the result of runing final_table
+ *
+ */
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.kddcup_run
+    (
+	training_table		TEXT,
+	user_sim_table		TEXT,
+	user_sim_columns	TEXT[],
+	user_sim_weights	FLOAT8[],
+	item_sim_table		TEXT,
+	item_sim_weights	FLOAT8[],  
+	test_table			TEXT,
+	final_table			TEXT,
+	top3_test_table		TEXT,
+	top3_final_table	TEXT
+	)
+RETURNS void AS $$
+DECLARE
+	user_tendency_table	TEXT := 'test.user_tendency';
+	item_tendency_table	TEXT := 'test.item_tendency';
+	user_itemset_table	TEXT := 'test.user_itemset';
+BEGIN
+	PERFORM  MADLIB_SCHEMA.cal_tendency
+		(
+			'uid',
+			'ruid',
+			user_sim_table,	
+			user_sim_columns,
+			user_sim_weights,
+			user_tendency_table 
+		);
+
+	PERFORM MADLIB_SCHEMA.cal_user_itemset 
+		(
+			training_table,
+			'uid',
+			'iid',
+			'result',
+			user_tendency_table,
+			'uid',
+			'ruid',
+			'tendency',
+			user_itemset_table
+		);
+
+	PERFORM MADLIB_SCHEMA.cal_item_tendency
+		(
+			item_sim_table,
+			item_sim_weights[1],
+			item_sim_weights[2],
+			item_tendency_table	
+		);
+
+
+	IF (test_table IS NOT NULL) THEN
+		PERFORM MADLIB_SCHEMA.cal_top3
+			(
+				training_table,
+				test_table,
+				user_itemset_table,
+				item_tendency_table,
+				top3_test_table
+			);	
+	END IF;
+
+	IF (final_table IS NOT NULL) THEN
+		PERFORM MADLIB_SCHEMA.cal_top3
+			(
+				training_table,
+				final_table,
+				user_itemset_table,
+				item_tendency_table,
+				top3_final_table
+			);	
+	END IF;
+
+END
+$$ LANGUAGE PLPGSQL;
+
+/*
+ * Calculate the similarities for all the impact features, such as user's keyword and tag, item's category
+ * and keyword. Then based on the calculated similarities for items and users information, we assign the weight for each
+ * feature, so that we can get the top 3 items. If we change the calculation approach for the similarities, then this 
+ * function should be invoked. After this function invoked, all the similarites will be stored, then we can call
+ * kddcup_run to tune the result by the assigned weights of those similarities.
+ *
+ * training_table		The training dataset
+ * user_sim_columns		Each element in this array will impact to the user tendency with its height 
+ *						specified in parameter user_sim_weights.
+ * user_sim_weights		The weights for the user_sim_columns. The size of this array must be the same
+ *						as that of user_sim_columns. They must be absolute consistency.
+ * item_sim_weights		the weights for the item. The first element is the weight of item's keyword, and
+ *						the second element is the weight of item's category.
+ * test_table			the test set table. If it's null, then top3_test_table will not be calculated
+ * final_table			the final table. If it's null, then top3_final_table will not be calcuated.
+ * top3_test_table		the result of runing test_table
+ * top3_final_table		the result of runing final_table
+ *
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.kddcup_rerun
+    (
+	training_table			TEXT,
+	user_sim_columns		TEXT[],
+	user_sim_weights		FLOAT8[],
+	item_sim_weights		FLOAT8[],  
+	test_table				TEXT,
+	final_table				TEXT,
+	top3_test_table			TEXT,
+	top3_final_table		TEXT
+	)
+RETURNS void AS $$
+DECLARE
+	user_sim_table		TEXT := 'test.user_sim';
+	item_sim_table		TEXT := 'test.item_sim';
+BEGIN
+	PERFORM MADLIB_SCHEMA.encode_features();
+	PERFORM MADLIB_SCHEMA.get_relevance_table();
+	PERFORM MADLIB_SCHEMA.cal_user_sim(user_sim_table);
+	PERFORM MADLIB_SCHEMA.cal_item_sim(item_sim_table);
+
+	PERFORM MADLIB_SCHEMA.kddcup_run
+		(
+			training_table,
+			user_sim_table,
+			user_sim_columns,
+			user_sim_weights,
+			item_sim_table,
+			item_sim_weights,
+			test_table,
+			final_table,
+			top3_test_table,
+			top3_final_table
+		);
+	
+END
+$$ LANGUAGE PLPGSQL;
 
