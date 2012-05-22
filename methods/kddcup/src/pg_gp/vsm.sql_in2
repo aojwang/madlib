@@ -1,0 +1,420 @@
+/*
+1. vsm calculation
+
+input: 
+1. A features table, including all the features, 
+		such as all the keywords for all the users, 
+				all the tags for all the users,
+				all the keywords for all the items.
+		The schema of this table is (features text[]);
+2. A dictionary table, each row represented as an array of features
+		The schema of this table is (id int, features text[]);	
+3. A relationship table, including the IDs relationship in dictionary table
+
+output:
+   The similarity of the IDs in relationship table
+
+*/
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.vsm_pre 
+    (
+	input_table		TEXT,
+	id_column		TEXT,
+	feature_column	TEXT,
+	weig_column		TEXT,
+	dict_table		TEXT,
+	features_table	TEXT,
+	encode_table	TEXT
+	)
+RETURNS void AS $$
+DECLARE
+    stmt			TEXT;
+	num_features	INT;
+BEGIN
+	EXECUTE 'DROP TABLE IF EXISTS ' || features_table;
+	EXECUTE 'DROP TABLE IF EXISTS ' || dict_table;
+	EXECUTE 'DROP TABLE IF EXISTS ' || encode_table;
+
+	-- generate the features table
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE %(feature, feat_no) AS
+				 SELECT %,
+						row_number() OVER(ORDER BY %) as feat_no
+				 FROM %
+				 WHERE % <> 0
+				 GROUP BY %
+				 DISTRIBUTED BY(feature)',
+				ARRAY[
+					features_table,
+					feature_column,
+					feature_column,
+					input_table,
+					feature_column,
+					feature_column
+				]
+			);
+	
+	EXECUTE stmt;
+
+	EXECUTE 'SELECT count(feat_no) FROM ' || features_table INTO num_features;
+
+	-- generate the encoded table
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE %(id, feat_no, weight) AS
+				 SELECT %, feat_no, sum(%)
+				 FROM % t1, % t2
+				 WHERE t1.% = t2.feature
+				 GROUP BY %, feat_no
+				 DISTRIBUTED BY(id)',
+				ARRAY[
+					encode_table,
+					id_column,
+					weig_column,
+					input_table,
+					features_table,
+					feature_column,
+					id_column
+				]
+				 
+			);
+
+	EXECUTE stmt;
+
+	-- based on the encoded table to generate the dictionary table
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE %(id, %_weig) AS
+				 SELECT id,
+						MADLIB_SCHEMA.svec_cast_positions_float8arr
+							(array_agg(feat_no), array_agg(weight)::FLOAT8[], %, 0.0)
+				 FROM %
+				 GROUP BY id
+				 DISTRIBUTED BY(id)',
+				ARRAY[
+					dict_table,
+					feature_column,
+					num_features::TEXT,
+					encode_table
+				]
+			);
+	EXECUTE stmt;
+
+	RETURN;
+END
+$$ LANGUAGE PLPGSQL;
+
+/*
+ * Generate the vsm table based on the dictionary table 
+ * which was already done preprocessing.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.vsm_cal 
+    (
+	dict_table			TEXT,
+	feature_column		TEXT,
+	relation_table		TEXT,
+	rel_oid_column		TEXT,
+	rel_did_column		TEXT,
+	vsm_table			TEXT
+    )
+RETURNS TEXT AS $$
+DECLARE
+    stmt		TEXT;
+BEGIN
+	EXECUTE 'DROP TABLE IF EXISTS ' || vsm_table;
+
+	-- generate the vsm
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE % AS
+				 SELECT t3.%, 
+						t3.%,
+						MADLIB_SCHEMA.svec_dot(t1.%_weig, t2.%_weig)
+							/
+						(sqrt(MADLIB_SCHEMA.svec_dot(t1.%_weig, t1.%_weig)) *
+						 sqrt(MADLIB_SCHEMA.svec_dot(t2.%_weig, t2.%_weig))
+						) as %_sim
+				 FROM % t1, % t2, % t3
+				 WHERE t1.id = t3.% and t2.id = t3.%
+				 DISTRIBUTED BY(%, %)',
+				ARRAY[
+					vsm_table,
+					rel_oid_column,
+					rel_did_column,
+					feature_column,
+					feature_column,
+					feature_column,
+					feature_column,
+					feature_column,
+					feature_column,
+					feature_column,
+					dict_table,
+					dict_table,
+					relation_table,
+					rel_oid_column,
+					rel_did_column,
+					rel_oid_column,
+					rel_did_column
+				]
+			);
+		EXECUTE stmt;
+	return vsm_table;
+END
+$$ LANGUAGE PLPGSQL;
+
+
+
+
+/*
+	Retrieve the vsm table based on the raw data
+	which need to be preprocessed.
+	@note relation_table must be distributed by the rel_oid_column
+		  and build index on the rel_did_column
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.vsm_cal 
+    (
+	input_table			TEXT,
+	id_column			TEXT,
+	feature_column		TEXT,
+	weig_column			TEXT,
+	relation_table		TEXT,
+	rel_oid_column		TEXT,
+	rel_did_column		TEXT,
+	vsm_table			TEXT
+    )
+RETURNS TEXT AS $$
+DECLARE
+    stmt				TEXT;
+	dict_table			TEXT := input_table || '_dict';
+	encode_table		TEXT := input_table || '_ed';
+	features_table		TEXT := input_table || '_features';
+BEGIN
+
+	PERFORM MADLIB_SCHEMA.vsm_pre 
+		(
+			input_table,
+			id_column,
+			feature_column,
+			weig_column,
+			dict_table,
+			features_table,
+			encode_table
+		);
+
+	EXECUTE 'DROP TABLE IF EXISTS ' || vsm_table;
+
+	RETURN MADLIB_SCHEMA.vsm_cal
+			(
+				dict_table,
+				feature_column,
+				relation_table,
+				rel_oid_column,
+				rel_did_column,
+				vsm_table
+			);
+END
+$$ LANGUAGE PLPGSQL;
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.vsm_cal 
+    (
+	dict_table			TEXT,
+	feature_columns		TEXT[],
+	relation_table		TEXT,
+	rel_oid_column		TEXT,
+	rel_did_column		TEXT,
+	vsm_table			TEXT
+    )
+RETURNS TEXT AS $$
+DECLARE
+    stmt		TEXT;
+	sim_stmt	TEXT = '';
+	weig_col	TEXT;
+	i			INT;
+BEGIN
+	EXECUTE 'DROP TABLE IF EXISTS ' || vsm_table;
+
+	FOR i IN 1..array_upper(feature_columns, 1) LOOP
+		weig_col = feature_columns[i];
+		sim_stmt = sim_stmt					|| 
+				   MADLIB_SCHEMA.__format
+					(
+						'MADLIB_SCHEMA.svec_dot(t1.%_weig, t2.%_weig)
+							/
+						(sqrt(MADLIB_SCHEMA.svec_dot(t1.%_weig, t1.%_weig)) *
+						 sqrt(MADLIB_SCHEMA.svec_dot(t2.%_weig, t2.%_weig))
+						) AS %_sim',
+						ARRAY[
+							weig_col,
+							weig_col,
+							weig_col,
+							weig_col,
+							weig_col,
+							weig_col,
+							weig_col
+						]
+
+					)						||
+					',';
+	END LOOP;
+
+	RAISE INFO 'sim stmt: %', sim_stmt;
+
+	sim_stmt = rtrim(sim_stmt, ',');
+
+	-- generate the vsm
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE % AS
+				 SELECT t3.%, 
+						t3.%,
+						%
+				 FROM % t1, % t2, % t3
+				 WHERE t1.id = t3.% and t2.id = t3.%
+				 DISTRIBUTED BY(oid)',
+				ARRAY[
+					vsm_table,
+					rel_oid_column,
+					rel_did_column,
+					sim_stmt,
+					dict_table,
+					dict_table,
+					relation_table,
+					rel_oid_column,
+					rel_did_column
+				]
+			);
+
+	RAISE INFO 'svm table:%', stmt;
+	EXECUTE stmt;
+	
+	return vsm_table;
+END
+$$ LANGUAGE PLPGSQL;
+
+
+/*
+	Retrieve the vsm table based on the raw data
+	which need to be preprocessed.
+	@note relation_table must be distributed by the rel_oid_column
+		  and build index on the rel_did_column
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.vsm_cal 
+    (
+	input_tables		TEXT[],
+	id_column			TEXT,
+	feature_columns		TEXT[],
+	weights_columns		TEXT[],
+	relation_table		TEXT,
+	rel_oid_column		TEXT,
+	rel_did_column		TEXT,
+	vsm_table			TEXT
+    )
+RETURNS TEXT AS $$
+DECLARE
+    stmt				TEXT;
+	dict_table			TEXT := input_tables[1] || '_dict';
+	encode_table		TEXT := input_tables[1] || '_ed';
+	features_table		TEXT := input_tables[1] || '_features';
+	i					INT;
+	dict_stmt			TEXT;
+	dict_sel_stmt		TEXT;
+	dict_from_stmt		TEXT;
+	dict_where_stmt		TEXT;
+BEGIN
+
+	PERFORM MADLIB_SCHEMA.__assert
+			(
+				(weights_columns IS NOT NULL) AND
+				(array_upper(weights_columns, 1) IS NOT NULL),
+				'weights columns must not be null or empty'
+			);
+	IF (array_upper(weights_columns, 1) = 1) THEN
+		RETURN MADLIB_SCHEMA.vsm_cal 
+			(
+				input_tables[1],
+				id_column,
+				feature_columns[1],
+				weights_columns[1],
+				relation_table,
+				rel_oid_column,
+				rel_did_column,
+				vsm_table
+			);
+
+	END IF;
+
+	FOR i IN 1..array_upper(weights_columns, 1) LOOP
+		PERFORM MADLIB_SCHEMA.vsm_pre 
+			(
+				input_tables[i],
+				id_column,
+				feature_columns[i],
+				weights_columns[i],
+				dict_table		|| i,
+				features_table	|| i,
+				encode_table	|| i
+			);
+	END LOOP;
+
+	dict_sel_stmt	= ' SELECT t1.id, ';
+	dict_from_stmt	= ' FROM ';
+	dict_where_stmt = ' WHERE ';
+
+	FOR i IN 1..array_upper(feature_columns, 1) LOOP
+		dict_sel_stmt = MADLIB_SCHEMA.__format
+				('% t%.%_weig,', ARRAY[dict_sel_stmt, i::TEXT, feature_columns[i]]);
+		
+		dict_from_stmt = MADLIB_SCHEMA.__format
+				('% %% t%,', ARRAY[dict_from_stmt, dict_table, i::TEXT, i::TEXT]);
+	END LOOP;
+
+	dict_sel_stmt = rtrim(dict_sel_stmt, ',');
+	dict_from_stmt = rtrim(dict_from_stmt, ',');
+
+	FOR i IN 2..array_upper(feature_columns, 1) LOOP
+		dict_where_stmt = MADLIB_SCHEMA.__format
+				('% t%.id = t1.id AND', ARRAY[dict_where_stmt, i::TEXT]);
+	END LOOP;
+
+	dict_where_stmt = rtrim(dict_where_stmt, 'AND');
+
+	RAISE INFO 'dict select stmt:%',  dict_sel_stmt;
+	RAISE INFO 'dict from stmt:%', dict_from_stmt;
+	RAISE INFO 'dict where stmt:%', dict_where_stmt;
+
+	EXECUTE 'DROP TABLE IF EXISTS ' || dict_table;
+
+	dict_stmt = MADLIB_SCHEMA.__format
+				(
+					'CREATE TABLE % AS
+					 %
+					 %
+					 %
+					 DISTRIBUTED BY(id)',
+					ARRAY[
+						dict_table,
+						dict_sel_stmt,
+						dict_from_stmt,
+						dict_where_stmt
+					]
+				);
+	
+	RAISE INFO 'dict stmt: %', dict_stmt;
+
+	EXECUTE dict_stmt;
+
+	RETURN MADLIB_SCHEMA.vsm_cal 
+			(
+				dict_table,
+				feature_columns,
+				relation_table,
+				rel_oid_column,
+				rel_did_column,
+				vsm_table
+			);
+
+END
+$$ LANGUAGE PLPGSQL;
+

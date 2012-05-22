@@ -1,0 +1,285 @@
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_vsm 
+    (
+	dict_table			TEXT,
+	feature_columns		TEXT[],
+	relation_table		TEXT,
+	rel_oid_column		TEXT,
+	rel_did_column		TEXT,
+	vsm_table			TEXT
+    )
+RETURNS TEXT AS $$
+DECLARE
+    stmt		TEXT;
+	sim_stmt	TEXT = '';
+	weig_col	TEXT;
+	i			INT;
+BEGIN
+	EXECUTE 'DROP TABLE IF EXISTS ' || vsm_table;
+
+	FOR i IN 1..array_upper(feature_columns, 1) LOOP
+		weig_col = feature_columns[i];
+		sim_stmt = sim_stmt					|| 
+				   MADLIB_SCHEMA.__format
+					(
+						'MADLIB_SCHEMA.svec_dot(t1.%_weig, t2.%_weig)
+							/
+						(sqrt(MADLIB_SCHEMA.svec_dot(t1.%_weig, t1.%_weig)) *
+						 sqrt(MADLIB_SCHEMA.svec_dot(t2.%_weig, t2.%_weig))
+						) AS %_sim',
+						ARRAY[
+							weig_col,
+							weig_col,
+							weig_col,
+							weig_col,
+							weig_col,
+							weig_col,
+							weig_col
+						]
+
+					)						||
+					',';
+	END LOOP;
+
+	RAISE INFO 'sim stmt: %', sim_stmt;
+
+	sim_stmt = rtrim(sim_stmt, ',');
+
+	-- generate the vsm
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TEMP TABLE % AS
+				 SELECT t3.%, 
+						t3.%,
+						%
+				 FROM % t1, % t2, % t3
+				 WHERE t1.id = t3.% and t2.id = t3.%
+				 DISTRIBUTED BY(%, %)',
+				ARRAY[
+					vsm_table,
+					rel_oid_column,
+					rel_did_column,
+					sim_stmt,
+					dict_table,
+					dict_table,
+					relation_table,
+					rel_oid_column,
+					rel_did_column,
+					rel_oid_column,
+					rel_did_column
+				]
+			);
+
+	RAISE INFO 'svm table:%', stmt;
+	EXECUTE stmt;
+	
+	return vsm_table;
+END
+$$ LANGUAGE PLPGSQL;
+
+
+/*
+	Retrieve the vsm table based on the raw data
+	which need to be preprocessed.
+	@note relation_table must be distributed by the rel_oid_column
+		  and build index on the rel_did_column
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_vsm
+    (
+	input_tables		TEXT[],
+	id_column			TEXT,
+	feature_columns		TEXT[],
+	weights_columns		TEXT[],
+	relation_table		TEXT,
+	rel_oid_column		TEXT,
+	rel_did_column		TEXT,
+	features_tables		TEXT[],
+	vsm_table			TEXT
+    )
+RETURNS TEXT AS $$
+DECLARE
+    stmt				TEXT;
+	dict_table			TEXT := input_tables[1] || '_dict';
+	i					INT;
+	dict_stmt			TEXT;
+	dict_sel_stmt		TEXT;
+	dict_from_stmt		TEXT;
+	dict_where_stmt		TEXT;
+BEGIN
+
+	PERFORM MADLIB_SCHEMA.__assert
+			(
+				(weights_columns IS NOT NULL) AND
+				(array_upper(weights_columns, 1) IS NOT NULL),
+				'weights columns must not be null or empty'
+			);
+	IF (array_upper(weights_columns, 1) = 1) THEN
+		RETURN MADLIB_SCHEMA.cal_vsm
+			(
+				input_tables[1],
+				id_column,
+				feature_columns[1],
+				weights_columns[1],
+				relation_table,
+				rel_oid_column,
+				rel_did_column,
+				features_tables[1],
+				vsm_table
+			);
+
+	END IF;
+
+	FOR i IN 1..array_upper(weights_columns, 1) LOOP
+		PERFORM MADLIB_SCHEMA.gen_dict_table 
+			(
+				input_tables[i],
+				id_column,
+				feature_columns[i],
+				weights_columns[i],
+				features_tables[i],
+				dict_table || i
+			);
+	END LOOP;
+
+	dict_sel_stmt	= ' SELECT t1.id, ';
+	dict_from_stmt	= ' FROM ';
+	dict_where_stmt = ' ON ';
+
+	FOR i IN 1..array_upper(feature_columns, 1) LOOP
+		dict_sel_stmt = MADLIB_SCHEMA.__format
+				('% t%.%_weig,', ARRAY[dict_sel_stmt, i::TEXT, feature_columns[i]]);
+		
+		dict_from_stmt = MADLIB_SCHEMA.__format
+				('% %% t% FULL OUTER JOIN ', ARRAY[dict_from_stmt, dict_table, i::TEXT, i::TEXT]);
+	END LOOP;
+
+	dict_sel_stmt = rtrim(dict_sel_stmt, ',');
+	dict_from_stmt = rtrim(dict_from_stmt, 'FULL OUTER JOIN ');
+
+	FOR i IN 2..array_upper(feature_columns, 1) LOOP
+		dict_where_stmt = MADLIB_SCHEMA.__format
+				('% t%.id = t1.id AND', ARRAY[dict_where_stmt, i::TEXT]);
+	END LOOP;
+
+	dict_where_stmt = rtrim(dict_where_stmt, 'AND');
+
+	RAISE INFO 'dict select stmt:%',  dict_sel_stmt;
+	RAISE INFO 'dict from stmt:%', dict_from_stmt;
+	RAISE INFO 'dict where stmt:%', dict_where_stmt;
+
+	EXECUTE 'DROP TABLE IF EXISTS ' || dict_table;
+
+	dict_stmt = MADLIB_SCHEMA.__format
+				(
+					'CREATE TABLE % AS
+					 %
+					 %
+					 %
+					 DISTRIBUTED BY(id)',
+					ARRAY[
+						dict_table,
+						dict_sel_stmt,
+						dict_from_stmt,
+						dict_where_stmt
+					]
+				);
+	
+	RAISE INFO 'dict stmt: %', dict_stmt;
+
+	EXECUTE dict_stmt;
+
+	RETURN MADLIB_SCHEMA.cal_vsm 
+			(
+				dict_table,
+				feature_columns,
+				relation_table,
+				rel_oid_column,
+				rel_did_column,
+				vsm_table
+			);
+
+END
+$$ LANGUAGE PLPGSQL;
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_tendency
+    (
+	oid_column		TEXT,
+	did_column		TEXT,
+	sim_tables		TEXT[],	
+	sim_columns		TEXT[],
+	sim_weight		FLOAT8[],
+	final_sim_table TEXT
+	)
+RETURNS void AS $$
+DECLARE
+    stmt			TEXT;
+	sel_stmt		TEXT;
+	from_stmt		TEXT;
+	where_stmt		TEXT;
+BEGIN
+	
+	sel_stmt = MADLIB_SCHEMA.__format('SELECT t1.% as uid, t1.% as ruid,', ARRAY[oid_column, did_column]);
+	from_stmt = ' FROM ';
+
+	FOR i IN 1..array_upper(sim_columns, 1) LOOP
+		sel_stmt = MADLIB_SCHEMA.__format
+				('% coalesce(%_sim, 0.0) * % +', ARRAY[sel_stmt, sim_columns[i], sim_weight[i]::TEXT]);
+	END LOOP;
+
+	FOR i IN 1..array_upper(sim_tables, 1) LOOP
+		from_stmt = MADLIB_SCHEMA.__format
+				('% % t% FULL OUTER JOIN ', ARRAY[from_stmt, sim_tables[i], i::TEXT]);
+	END LOOP;
+
+	from_stmt = rtrim(from_stmt, 'FULL OUTER JOIN ');
+	sel_stmt = rtrim(sel_stmt, '+') || 'AS tendency ';
+
+	where_stmt = ' ON ';
+	IF (ARRAY_UPPER(sim_tables, 1) = 1) THEN
+		where_stmt = '';
+	ELSE
+		FOR i IN 2..array_upper(sim_tables, 1) LOOP
+			where_stmt = MADLIB_SCHEMA.__format
+					(
+						'% t%.% = t1.% AND t%.% = t1.% AND', 
+						ARRAY[
+							where_stmt, 
+							i::TEXT, 
+							oid_column,
+							oid_column,
+							i::TEXT,
+							did_column,
+							did_column
+						]);
+		END LOOP;
+	END IF;
+
+	RAISE INFO 'sel stmt:%', sel_stmt;
+	RAISE INFO 'where stmt:%', where_stmt;
+	RAISE INFO 'from stmt:%', from_stmt;
+
+	where_stmt = rtrim(where_stmt, 'AND');
+
+
+	EXECUTE 'DROP TABLE IF EXISTS ' || final_sim_table;
+	stmt = MADLIB_SCHEMA.__format
+			(
+				'CREATE TABLE % AS
+				  %
+				  %
+				  %
+				 DISTRIBUTED BY(uid, ruid)',
+				ARRAY[
+					final_sim_table,
+					sel_stmt,
+					from_stmt,
+					where_stmt
+				]
+			);
+	
+	RAISE INFO 'tendency:%', stmt;
+
+	EXECUTE stmt;
+END
+$$ LANGUAGE PLPGSQL;
+

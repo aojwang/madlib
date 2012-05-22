@@ -1,0 +1,119 @@
+/*
+ * user common follow calculation
+ *
+ * input:
+ * 1. A user_relevance table
+ * 2. A user_sns table
+ * 3. A user_profile table
+ *
+ * output:
+ * user_common_follow_table, including the common follow rate of any 2 users;
+ *
+ */
+
+/* generate the common follow number table based on the dictionary table
+ * which has already been preprocessed.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.get_com_ratio
+    (
+	fols		MADLIB_SCHEMA.svec,
+	rfols		MADLIB_SCHEMA.svec
+	)
+RETURNS FLOAT8 AS $$
+DECLARE
+	com_fols		FLOAT8;
+BEGIN
+	com_fols = MADLIB_SCHEMA.svec_elsum(MADLIB_SCHEMA.svec_mult(fols, rfols));
+	
+	IF (MADLIB_SCHEMA.is_float8_zero(com_fols)) THEN
+		RETURN 0.0;
+	ELSE	
+		RETURN com_fols /
+		   (MADLIB_SCHEMA.svec_elsum(fols) +  MADLIB_SCHEMA.svec_elsum(rfols) - com_fols);
+	END IF;
+END
+$$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_common_followers
+    (
+	sns_table				TEXT,
+	sns_uid_column			TEXT,
+	sns_ruid_column			TEXT,
+	features_table			TEXT,
+	relevance_table			TEXT,
+	rel_uid_column			TEXT,
+	rel_ruid_column			TEXT,
+	com_fol_table			TEXT
+    )
+RETURNS TEXT AS $$
+DECLARE
+	stmt				TEXT;
+	com_fol_table_temp	TEXT := com_fol_table || '_temp';
+	dict_table			TEXT := sns_table || '_dict';	
+BEGIN
+
+	PERFORM MADLIB_SCHEMA.gen_dict_table 
+		(
+			sns_table,
+			sns_uid_column,
+			sns_ruid_column,
+			features_table,
+			dict_table			
+		);
+
+	stmt = MADLIB_SCHEMA.__format
+		(
+			'CREATE TEMP TABLE %(uid, ruid, fos, rfos, com) AS
+			 SELECT t3.uid, 
+					t3.ruid,
+					MADLIB_SCHEMA.get_com_ratio(t1.%_weig, t2.%_weig) as com_sim
+			 FROM
+			 % t1,
+			 % t2,
+			 % t3
+			WHERE t1.id = t3.% AND t2.id = t3.%
+			DISTRIBUTED BY(uid, ruid)',
+			ARRAY[
+				com_fol_table,
+				sns_ruid_column,
+				sns_ruid_column,
+				dict_table,
+				dict_table,
+				relevance_table,
+				rel_uid_column,
+				rel_ruid_column
+			]
+		);
+
+
+	stmt = MADLIB_SCHEMA.__format
+		(
+			'CREATE TEMP TABLE %(uid, ruid, com_sim) AS
+			 SELECT t3.uid, 
+					t3.ruid,
+					MADLIB_SCHEMA.get_com_ratio(t1.%_weig, t2.%_weig) as com_sim
+			 FROM
+			 % t1,
+			 % t2,
+			 % t3
+			WHERE t1.id = t3.% AND t2.id = t3.%
+			DISTRIBUTED BY(uid, ruid)',
+			ARRAY[
+				com_fol_table,
+				sns_ruid_column,
+				sns_ruid_column,
+				dict_table,
+				dict_table,
+				relevance_table,
+				rel_uid_column,
+				rel_ruid_column
+			]
+		);
+	
+	RAISE INFO 'common follow:%', stmt;
+
+	EXECUTE stmt;
+
+	return com_fol_table;
+END
+$$ LANGUAGE PLPGSQL;

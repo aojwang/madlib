@@ -1,0 +1,76 @@
+/*
+ * user interaction calculation
+ *
+ * input
+ * 1. user_action table
+ * 2. user_relevance table
+ * 
+ * output
+ * user_interaction table, stored the interaction ( at, retweet, comment) number of given
+ *	user pair in user_relevance
+ */
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.cal_interaction
+    (
+	action_table		TEXT,		-- input table, user_action
+	action_uid_column	TEXT,
+	des_uid_column		TEXT,
+	num_ats_column		TEXT,
+	num_retweets_column	TEXT,
+	num_comments_column	TEXT,
+	relevance_table		TEXT,		-- input table, user_relevance
+	rel_uid_column		TEXT,
+	rel_ruid_column		TEXT,
+	action_total_table	TEXT,		-- total action number of a user
+	interaction_table	TEXT		-- output table, action number of a user to another
+    )
+RETURNS TEXT AS $$
+DECLARE
+	stmt		TEXT;
+BEGIN
+	EXECUTE 'DROP TABLE IF EXISTS ' || interaction_table;
+	
+	stmt = MADLIB_SCHEMA.__format
+	(
+		'CREATE TEMP TABLE %(uid, ruid, int_sim) AS
+		 SELECT rel.%, rel.%, (act.% + act.% + act.%)::float8 / act_t.total::float8
+		 FROM	% act, 
+				(SELECT % as uid,  sum(% + % + %) as total
+				 FROM % GROUP BY %
+				) act_t, 
+				% rel
+		 WHERE	act.% = rel.%
+		 AND	act.% = rel.%
+		 AND	act.% = act_t.uid
+		 AND	act_t.total <> 0
+		 DISTRIBUTED BY(uid, ruid)',
+		ARRAY[
+			interaction_table,
+			rel_uid_column,
+			rel_ruid_column,
+			num_ats_column,
+			num_retweets_column,
+			num_comments_column,
+			action_table,
+			action_uid_column,
+			num_ats_column,
+			num_retweets_column,
+			num_comments_column,
+			action_table,
+			action_uid_column,
+			relevance_table,
+			action_uid_column,
+			rel_uid_column,
+			des_uid_column,
+			rel_ruid_column,
+			action_uid_column
+		]
+	);
+	
+	RAISE INFO 'interaction :%', stmt;
+
+	EXECUTE stmt;
+	
+	RETURN interaction_table;
+END;
+$$ LANGUAGE PLPGSQL;
