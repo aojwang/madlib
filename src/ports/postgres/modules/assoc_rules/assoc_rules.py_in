@@ -229,12 +229,12 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
         CREATE TEMP TABLE assoc_rule_sets
             (
             text_svec   TEXT,
-            set_list    {0}.svec,
+            set_list    BIGINT[],
             support     FLOAT8,
             iteration   INT
             )
         m4_ifdef(`__GREENPLUM__',`DISTRIBUTED BY (text_svec)')
-        """.format(madlib_schema));
+        """);
 
     # this table keeps the patterns in the current iteration.
     plpy.execute("DROP TABLE IF EXISTS assoc_rule_sets_loop");
@@ -242,26 +242,23 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
         CREATE TEMP TABLE assoc_rule_sets_loop
             (
             id          BIGINT,
-            set_list    {0}.svec,
+            set_list    BIGINT[],
             support     FLOAT8,
-            tids        {1}.svec
+            tids        bigint[]
             )
         m4_ifdef(`__GREENPLUM__',`DISTRIBUTED BY (id)')
-        """.format(madlib_schema, madlib_schema));
+        """);
 
     plpy.execute("""
          INSERT INTO assoc_rule_sets_loop (id, set_list, support, tids)
          SELECT
              t.item,
-            {0}.svec_cast_positions_float8arr
-              (ARRAY[t.item], ARRAY[1], {1}, 0),
-            t.cnt::FLOAT8 / {2},
-            {3}.svec_cast_positions_float8arr
-                (array_agg(t.tid), array_agg(1), {4}, 0)
+            {madlib_schema}.bitmap64_agg(t.item, 4),
+            t.cnt::FLOAT8 / {num_tranx},
+            {madlib_schema}.bitmap64_agg(t.tid, 256)
          FROM assoc_enc_input t
          GROUP BY t.item, t.cnt
-         """.format(madlib_schema, num_supp_prod, num_tranx, madlib_schema,
-                    num_tranx)
+         """.format(madlib_schema = madlib_schema, num_tranx = num_tranx)
          );
 
     rv = plpy.execute("""
@@ -297,12 +294,12 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
          CREATE TEMP TABLE assoc_loop_aux
             (
             id              BIGSERIAL,
-            set_list        {0}.svec,
+            set_list        BIGINT[],
             support         FLOAT8,
-            tids            {1}.svec
+            tids            BIGINT[]
             )
          m4_ifdef(`__GREENPLUM__',`DISTRIBUTED BY (id)')
-         """.format(madlib_schema, madlib_schema));
+         """);
 
     if verbose  :
         plpy.info("{0} Frequent itemsets found in this iteration".format(
@@ -330,43 +327,64 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
              INSERT INTO assoc_rule_sets
                 (text_svec, set_list, support, iteration)
              SELECT array_to_string(
-                    {0}.svec_nonbase_positions(set_list, 0), ','),
+                    {madlib_schema}.bitmap64_nonzero_positions(set_list), ','),
                     set_list,
-                    support, {1}
-             FROM assoc_rule_sets_loop""".format(madlib_schema, iter)
+                    support, {iter}
+             FROM assoc_rule_sets_loop""".format(madlib_schema = madlib_schema, iter = iter)
              );
 
         if verbose  :
             plpy.info("time of preparing data: {0}".format(
                  time.time() - begin_step_exec));
 
-        # generate the patterns for the next iteration
-        plpy.execute("ALTER SEQUENCE assoc_loop_aux_id_seq RESTART WITH 1");
-        plpy.execute("TRUNCATE TABLE assoc_loop_aux");
-        plpy.execute("""
+        plpy.info("""
            INSERT INTO assoc_loop_aux(set_list, support, tids)
-           SELECT DISTINCT ON({0}.svec_to_string(set_list)) set_list,
-                   {1}.svec_l1norm(tids)::FLOAT8 / {2},
+           SELECT DISTINCT ON(set_list) set_list,
+                   {madlib_schema}.bitmap64_nonzero_count(tids)::FLOAT8 / {num_tranx},
                    tids
            FROM (
              SELECT
-                {3}.svec_minus(
-                    {4}.svec_plus(t1.set_list, t3.set_list),
-                    {5}.svec_mult(t1.set_list, t3.set_list)
-                ) as set_list,
-                {6}.svec_mult(t1.tids, t3.tids) as tids
+                 {madlib_schema}.bitmap64_or(t1.set_list, t3.set_list)
+                 as set_list,
+                {madlib_schema}.bitmap64_and(t1.tids, t3.tids) as tids
              FROM assoc_rule_sets_loop t1,
                   rule_set_rel t2,
                   assoc_rule_sets_loop t3
              WHERE t1.id = t2.sid and t2.did = t3.id
            ) t
-           WHERE {7}.svec_l1norm(set_list)::INT = {8} AND
-                 {9}.svec_l1norm(tids)::FLOAT8 >= {10}
-           """.format(madlib_schema, madlib_schema, num_tranx, madlib_schema,
-                      madlib_schema, madlib_schema, madlib_schema, madlib_schema,
-                      iter + 1, madlib_schema, min_supp_tranx)
+           WHERE {madlib_schema}.bitmap64_nonzero_count(set_list)::INT = {next_iter} AND
+                 {madlib_schema}.bitmap64_nonzero_count(tids)::FLOAT8 >= {min_supp_tranx}
+           """.format(madlib_schema = madlib_schema, num_tranx = num_tranx,
+                      next_iter = iter + 1, min_supp_tranx = min_supp_tranx)
+           );   
+        #if 1 == iter : return (None, None, None, None);
+        # generate the patterns for the next iteration
+        plpy.execute("ALTER SEQUENCE assoc_loop_aux_id_seq RESTART WITH 1");
+        plpy.execute("TRUNCATE TABLE assoc_loop_aux");
+        plpy.execute("""
+           INSERT INTO assoc_loop_aux(set_list, support, tids)
+           SELECT DISTINCT ON(set_list) set_list,
+                   {madlib_schema}.bitmap64_nonzero_count(tids)::FLOAT8 / {num_tranx},
+                   tids
+           FROM (
+             SELECT
+                 {madlib_schema}.bitmap64_or(t1.set_list, t3.set_list)
+                 as set_list,
+                {madlib_schema}.bitmap64_and(t1.tids, t3.tids) as tids
+             FROM assoc_rule_sets_loop t1,
+                  rule_set_rel t2,
+                  assoc_rule_sets_loop t3
+             WHERE t1.id = t2.sid and t2.did = t3.id
+           ) t
+           WHERE {madlib_schema}.bitmap64_nonzero_count(set_list)::INT = {next_iter} AND
+                 {madlib_schema}.bitmap64_nonzero_count(tids)::FLOAT8 >= {min_supp_tranx}
+           """.format(madlib_schema = madlib_schema, num_tranx = num_tranx,
+                      next_iter = iter + 1, min_supp_tranx = min_supp_tranx)
            );
-
+        
+        
+        
+        #if 3 == iter : return (None, None, None, None);
         plpy.execute("TRUNCATE TABLE assoc_rule_sets_loop");
         plpy.execute("""
             INSERT INTO assoc_rule_sets_loop(id, set_list, support, tids)
@@ -393,6 +411,7 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
                     iter + 1, time.time() - begin_step_exec));
 
         cal_itemsets_time = cal_itemsets_time + (time.time() - begin_step_exec);
+        
 
     if (num_item_loop == 0) and (iter < 2) and verbose :
         plpy.info("No association rules found that meet given criteria");
@@ -431,6 +450,14 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
                   (t.support_xy / x.support) >= {1}
             """.format(madlib_schema, confidence)
             );
+
+        if verbose :
+            rv = plpy.execute("""
+                SELECT count(*) as c FROM assoc_rules_aux_tmp
+                """);
+            num_item_loop = rv[0]["c"];
+            plpy.info("{0} Total association rules found. Time: {1}".format(
+                    num_item_loop, time.time() - begin_step_exec));
 
         # generate the readable rules
         plpy.execute("DROP TABLE IF EXISTS pre_tmp_table");

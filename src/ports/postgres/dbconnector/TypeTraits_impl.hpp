@@ -291,6 +291,30 @@ struct TypeTraits<MutableArrayHandle<int32_t> >
 };
 
 template <>
+struct TypeTraits<ArrayHandle<int64> >
+  : public TypeTraitsBase<ArrayHandle<int64> > {
+    enum { oid = INT8ARRAYOID };
+    enum { isMutable = dbal::Immutable };
+    enum { typeClass = dbal::ArrayType };
+    WITH_TO_PG_CONVERSION( PointerGetDatum(value.array()) );
+    WITH_TO_CXX_CONVERSION( madlib_DatumGetArrayTypeP(value) );
+};
+
+template <>
+struct TypeTraits<MutableArrayHandle<int64> >
+  : public TypeTraitsBase<MutableArrayHandle<int64> > {
+    enum { oid = INT8ARRAYOID };
+    enum { isMutable = dbal::Mutable };
+    enum { typeClass = dbal::ArrayType };
+    WITH_TO_PG_CONVERSION( PointerGetDatum(value.array()) );
+    WITH_TO_CXX_CONVERSION(
+        needMutableClone
+          ? madlib_DatumGetArrayTypePCopy(value)
+          : madlib_DatumGetArrayTypeP(value)
+    );
+};
+
+template <>
 struct TypeTraits<ArrayHandle<double> > {
     typedef ArrayHandle<double> value_type;
 
