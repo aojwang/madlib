@@ -1,0 +1,210 @@
+/* ----------------------------------------------------------------------- *//**
+ *
+ * @file bitmap.sql_in
+ *
+ * @brief The \ref
+
+ * @date June 2011
+ * @modified August 2012
+ *
+ * @sa 
+ *
+ *//* ----------------------------------------------------------------------- */
+
+m4_include(`SQLCommon.m4')
+
+CREATE TYPE MADLIB_SCHEMA.bitmap8;
+
+/*
+ * @brief the in function for the bitmap data type
+ *
+ * @param args[0]   the input string, which should be split by a comma.
+ *
+ * @return the bitmap representing the input string
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_in(cstring)
+RETURNS MADLIB_SCHEMA.bitmap8
+AS 'MODULE_PATHNAME'
+LANGUAGE C IMMUTABLE STRICT;
+
+
+/*
+ * @brief the out function for the bitmap data type.
+ *
+ * @param args[0]   the bitmap
+ *
+ * @return the string representing the bitmap.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_out(MADLIB_SCHEMA.bitmap8)
+RETURNS cstring
+AS 'MODULE_PATHNAME'
+LANGUAGE C IMMUTABLE STRICT;
+
+
+CREATE TYPE MADLIB_SCHEMA.bitmap8 (
+       internallength = VARIABLE, 
+       input = MADLIB_SCHEMA.bitmap8_in,
+       output = MADLIB_SCHEMA.bitmap8_out,
+       storage=EXTENDED,
+       alignment = double
+);
+
+
+/*
+ * @brief the step function for aggregating the input numbers to
+ * a compressed bitmap.
+ *
+ * @param args[0]   an array indicating the state
+ * @param args[1]   the input number
+ * @param args[2]   the number of empty elements will be dynamically
+ *                  added to the state array
+ *
+ * @return an array indicating the state after inserted the input number.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_agg_sfunc
+(
+    MADLIB_SCHEMA.bitmap8,
+    INT8,
+    INT4
+)
+RETURNS MADLIB_SCHEMA.bitmap8
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief the pre-function for the bitmap aggregation.
+ *
+ * @param args[0]   an array of the first state
+ * @param args[1]   an array of the second state
+ *
+ * @return an array of merging the first state and the second state.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_agg_pfunc
+(
+    MADLIB_SCHEMA.bitmap8,
+    MADLIB_SCHEMA.bitmap8
+)
+RETURNS MADLIB_SCHEMA.bitmap8
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+CREATE AGGREGATE MADLIB_SCHEMA.bitmap8_agg
+(
+    INT8,
+    INT4
+)
+(
+    SFUNC=MADLIB_SCHEMA.bitmap8_agg_sfunc,
+    STYPE=MADLIB_SCHEMA.bitmap8,
+    m4_ifdef(`__GREENPLUM__',`prefunc=MADLIB_SCHEMA.bitmap8_agg_pfunc')
+);
+
+
+/*
+ * @brief The implementation of AND operation.
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return the result of args[0] AND args[1].
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_and
+(
+    MADLIB_SCHEMA.bitmap8,
+    MADLIB_SCHEMA.bitmap8
+)
+RETURNS MADLIB_SCHEMA.bitmap8
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief The implementation of OR operation.
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return the result of args[0] OR args[1].
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_or
+(
+    MADLIB_SCHEMA.bitmap8,
+    MADLIB_SCHEMA.bitmap8
+)
+RETURNS MADLIB_SCHEMA.bitmap8
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE STRICT;
+
+
+/*
+ * @brief get the positions of the non-zero bits
+ *
+ * @param args[0]   the bitmap array
+ *
+ * @return the array contains the positions of the non-zero bits.
+ * @note the position starts from 1.
+ *
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_nonzero_positions
+(
+    MADLIB_SCHEMA.bitmap8
+)
+RETURNS INT8[]
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief get the number of bits whose value is 1.
+ *
+ * @param args[0]   the bitmap array
+ *
+ * @return the count of non-zero bits in the bitmap.
+ *
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_nonzero_count
+(
+    MADLIB_SCHEMA.bitmap8
+)
+RETURNS INT8
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief get the array representation for the bitmap
+ *
+ * @param args[0]   the bitmap
+ *
+ * @return the array representing the bitmap.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_return_array
+(
+    MADLIB_SCHEMA.bitmap8
+)
+RETURNS INT8[]
+AS 'MODULE_PATHNAME'
+LANGUAGE C IMMUTABLE STRICT;
+
+
+CREATE OPERATOR | (
+    leftarg = MADLIB_SCHEMA.bitmap8, rightarg = MADLIB_SCHEMA.bitmap8, 
+    procedure = MADLIB_SCHEMA.bitmap8_or
+);
+
+CREATE OPERATOR & (
+    leftarg = MADLIB_SCHEMA.bitmap8, rightarg = MADLIB_SCHEMA.bitmap8, 
+    procedure = MADLIB_SCHEMA.bitmap8_and
+);
+
+
+CREATE CAST (MADLIB_SCHEMA.bitmap8 AS INT8[]) 
+WITH FUNCTION MADLIB_SCHEMA.bitmap8_return_array(MADLIB_SCHEMA.bitmap8);

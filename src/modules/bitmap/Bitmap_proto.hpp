@@ -76,8 +76,14 @@ public:
     }
 
     //ctor
-    Bitmap(int size, int capacity, int size_per_add) :
-        Bitmap(NULL, size, capacity, size_per_add){
+    Bitmap(int capacity, int size_per_add) :
+        m_bitmap(NULL), m_size(1), m_capacity(capacity),
+        m_size_per_add(size_per_add), m_bitmap_updated(false),
+        m_base(sizeof(T) * 8 - 1),
+        m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
+        m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
+        m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)){
+
         m_bitmap = new T[capacity];
         memset(m_bitmap, 0x00, capacity * sizeof(T));
         m_bitmap[0] = 1;
@@ -85,8 +91,8 @@ public:
     }
 
     //ctor
-    Bitmap(MutableArrayHandle<T> handle, int size_per_add) :
-        m_bitmap(handle.ptr()), m_size(handle[0]), m_capacity(handle.size()),
+    Bitmap(ArrayHandle<T> handle, int size_per_add) :
+        m_bitmap(const_cast<T*>(handle.ptr())), m_size(handle[0]), m_capacity(handle.size()),
         m_size_per_add(size_per_add), m_bitmap_updated(false),
         m_base(sizeof(T) * 8 - 1),
         m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
@@ -148,6 +154,8 @@ public:
 
     // transform the bitmap to an ArrayHandle instance
     inline ArrayHandle<T> to_ArrayHandle(bool use_capacity = true);
+
+    inline Datum to_PointerDatum(bool use_capacity = true);
 
     // override the OR operation
     inline ArrayHandle<T> operator | (Bitmap& rhs);

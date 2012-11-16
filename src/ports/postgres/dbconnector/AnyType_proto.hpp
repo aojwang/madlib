@@ -34,15 +34,24 @@ public:
     AnyType();
     template <typename T> AnyType(const T& inValue,
         bool inForceLazyConversionToDatum = false);
-    template <typename T> T getAs() const;
+
+    // for some user defined types, the underlying representation is
+    // the basic type, and we want to use the type OID to retrieve the
+    // argument. If we call getAs(), then it can't pass the type OID
+    // assertion (mTypeID == TypeTraits<T>::oid). For example, the underlying
+    // representation for bitmap is an array, and we use PG_GETARG_ARRAYTYPE_P
+    // to retrieve the arguments.
+    template <typename T>
+    AnyType(const T& inValue, Oid _oid,
+             bool inForceLazyConversionToDatum = false);
+
+    template <typename T> T getAs(bool noTypeCheck = false, bool isClone = true) const;
+
     AnyType operator[](uint16_t inID) const;
     uint16_t numFields() const;
     bool isNull() const;
     bool isComposite() const;
     AnyType& operator<<(const AnyType& inValue);
-    inline void setMutable(bool isMutable){
-        mIsMutable = isMutable;
-    }
 
 protected:
     /**

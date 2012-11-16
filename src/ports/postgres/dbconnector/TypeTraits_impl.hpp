@@ -93,11 +93,12 @@ private:
     }
 #define WITH_TO_CXX_CONVERSION(_convertToCXX) \
     static value_type toCXXType(Datum value, bool needMutableClone, \
-        SystemInformation* sysInfo) { \
+        SystemInformation* sysInfo, Oid _oid = InvalidOid) { \
         \
         (void) value; \
         (void) needMutableClone; \
         (void) sysInfo; \
+        (void) _oid; \
         return _convertToCXX; \
     }
 #define WITH_BIND_TO_STREAM(_bindToStream) \
@@ -220,17 +221,32 @@ struct TypeTraits<bool> {
     WITH_TO_CXX_CONVERSION( DatumGetBool(value) );
 };
 
+
 template <>
-struct TypeTraits<char*> {
-    typedef char* value_type;
+struct TypeTraits<text*> {
+    typedef text* value_type;
 
     WITH_OID( TEXTOID );
     WITH_TYPE_CLASS( dbal::SimpleType );
     WITH_MUTABILITY( dbal::Immutable );
     WITH_DEFAULT_EXTENDED_TRAITS;
-    WITH_TO_PG_CONVERSION(PointerGetDatum(cstring_to_text(value)));
-    WITH_TO_CXX_CONVERSION(text_to_cstring(DatumGetTextPP(value)));
+    WITH_TO_PG_CONVERSION(PointerGetDatum(value));
+    WITH_TO_CXX_CONVERSION(DatumGetTextPP(value));
 };
+
+
+template <>
+struct TypeTraits<char*> {
+    typedef char* value_type;
+
+    WITH_OID( CSTRINGOID );
+    WITH_TYPE_CLASS( dbal::SimpleType );
+    WITH_MUTABILITY( dbal::Immutable );
+    WITH_DEFAULT_EXTENDED_TRAITS;
+    WITH_TO_PG_CONVERSION(CStringGetDatum(value));
+    WITH_TO_CXX_CONVERSION(DatumGetCString(value));
+};
+
 
 template <>
 struct TypeTraits<ByteString> : public TypeTraitsBase<ByteString> {

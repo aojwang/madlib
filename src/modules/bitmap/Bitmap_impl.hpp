@@ -211,6 +211,29 @@ ArrayHandle<T> Bitmap<T>::to_ArrayHandle
 }
 
 
+template <typename T>
+inline
+Datum Bitmap<T>::to_PointerDatum
+(
+    bool use_capacity
+){
+    int size = use_capacity ? m_capacity : m_size;
+
+    Datum* result = new Datum[size];
+    for (int i = 0; i < size; ++i){
+        result[i] = get_Datum((T)m_bitmap[i]);
+    }
+
+    return PointerGetDatum(construct_array(
+            result,
+            size,
+            m_typoid,
+            m_typlen,
+            m_typbyval,
+            m_typalign
+            ));
+}
+
 /**
  * @brief the entry function for doing the bitwise operations,
  *        such as |, & and ^, etc.

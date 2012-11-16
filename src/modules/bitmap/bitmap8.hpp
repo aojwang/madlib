@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *//**
  *
- * @file wah.hpp
+ * @file bitmap4.hpp
  *
  *//* ----------------------------------------------------------------------- */
 
@@ -28,23 +28,12 @@
  *
  */
 
-//DECLARE_UDF(bitmap, wah_in)
-DECLARE_UDF(bitmap, bitmap64_agg_sfunc)
-DECLARE_UDF(bitmap, bitmap64_agg_pfunc)
-DECLARE_UDF(bitmap, bitmap32_agg_sfunc)
-DECLARE_UDF(bitmap, bitmap32_agg_pfunc)
-DECLARE_UDF(bitmap, bitmap32_and)
-DECLARE_UDF(bitmap, bitmap32_or)
-DECLARE_UDF(bitmap, bitmap64_or)
-DECLARE_UDF(bitmap, bitmap64_and)
-DECLARE_UDF(bitmap, bitmap32_nonzero_count)
-DECLARE_UDF(bitmap, bitmap64_nonzero_count)
-DECLARE_UDF(bitmap, bitmap32_nonzero_positions)
-DECLARE_UDF(bitmap, bitmap64_nonzero_positions)
-
-
-
-
-
-
-//DECLARE_UDF(bitmap, bitmap_agg_ffunc)
+DECLARE_UDF(bitmap, bitmap8_agg_sfunc)
+DECLARE_UDF(bitmap, bitmap8_agg_pfunc)
+DECLARE_UDF(bitmap, bitmap8_and)
+DECLARE_UDF(bitmap, bitmap8_or)
+DECLARE_UDF(bitmap, bitmap8_out)
+DECLARE_UDF(bitmap, bitmap8_in)
+DECLARE_UDF(bitmap, bitmap8_return_array)
+DECLARE_UDF(bitmap, bitmap8_nonzero_count)
+DECLARE_UDF(bitmap, bitmap8_nonzero_positions)
