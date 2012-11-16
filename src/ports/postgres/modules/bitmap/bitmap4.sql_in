@@ -207,5 +207,16 @@ CREATE OPERATOR & (
 );
 
 
+CREATE OPERATOR MADLIB_SCHEMA.| (
+    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
+    procedure = MADLIB_SCHEMA.bitmap4_or
+);
+
+CREATE OPERATOR MADLIB_SCHEMA.& (
+    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
+    procedure = MADLIB_SCHEMA.bitmap4_and
+);
+
+
 CREATE CAST (MADLIB_SCHEMA.bitmap4 AS INT4[]) 
 WITH FUNCTION MADLIB_SCHEMA.bitmap4_return_array(MADLIB_SCHEMA.bitmap4);

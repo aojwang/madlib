@@ -195,6 +195,18 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
 
+CREATE OPERATOR MADLIB_SCHEMA.| (
+    leftarg = MADLIB_SCHEMA.bitmap8, rightarg = MADLIB_SCHEMA.bitmap8, 
+    procedure = MADLIB_SCHEMA.bitmap8_or
+);
+
+
+CREATE OPERATOR MADLIB_SCHEMA.& (
+    leftarg = MADLIB_SCHEMA.bitmap8, rightarg = MADLIB_SCHEMA.bitmap8, 
+    procedure = MADLIB_SCHEMA.bitmap8_and
+);
+
+
 CREATE OPERATOR | (
     leftarg = MADLIB_SCHEMA.bitmap8, rightarg = MADLIB_SCHEMA.bitmap8, 
     procedure = MADLIB_SCHEMA.bitmap8_or
