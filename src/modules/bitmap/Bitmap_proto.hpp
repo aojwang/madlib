@@ -155,8 +155,6 @@ public:
     // transform the bitmap to an ArrayHandle instance
     inline ArrayHandle<T> to_ArrayHandle(bool use_capacity = true);
 
-    inline Datum to_PointerDatum(bool use_capacity = true);
-
     // override the OR operation
     inline ArrayHandle<T> operator | (Bitmap& rhs);
 
@@ -181,6 +179,9 @@ public:
     }
 
 protected:
+    // the wrapper function for construct_array
+    inline ArrayType* to_ArrayType(Datum* result, int size) const;
+
     // get the number of 1s
     inline T get_nonzero_cnt(int32 value){
         uint32 res = value;

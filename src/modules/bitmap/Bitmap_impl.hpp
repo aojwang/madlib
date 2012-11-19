@@ -95,7 +95,7 @@ Bitmap<T>& Bitmap<T>::insert
 
     // for 32-bit bitmap, the maximum number is (1 << 30) - 1
     // for 64 bit bitmap, the maximum number is (1 << 62) - 1
-    madlib_assert(bit_pos > 0 && bit_pos < (1 << (m_base - 1)),
+    madlib_assert(bit_pos > 0 && bit_pos < ((int64)1 << (m_base - 1)),
         std::invalid_argument
         ("the input number is greater than the supported maximum number"));
 
@@ -189,7 +189,8 @@ Bitmap<T>& Bitmap<T>::insert
  */
 template <typename T>
 inline
-ArrayHandle<T> Bitmap<T>::to_ArrayHandle
+ArrayHandle<T>
+Bitmap<T>::to_ArrayHandle
 (
     bool use_capacity
 ){
@@ -200,39 +201,36 @@ ArrayHandle<T> Bitmap<T>::to_ArrayHandle
         result[i] = get_Datum((T)m_bitmap[i]);
     }
 
-    return construct_array(
-            result,
-            size,
-            m_typoid,
-            m_typlen,
-            m_typbyval,
-            m_typalign
-            );
+    return to_ArrayType(result, size);
 }
 
 
+/**
+ * @brief the wrapper function for construct_array in arrayfuncs.c
+ *
+ * @param result    the array used to construct the ArrayType
+ * @param size      the size of the input array
+ *
+ * @return the ArrayType representation for the input array.
+ */
 template <typename T>
 inline
-Datum Bitmap<T>::to_PointerDatum
+ArrayType*
+Bitmap<T>::to_ArrayType
 (
-    bool use_capacity
-){
-    int size = use_capacity ? m_capacity : m_size;
-
-    Datum* result = new Datum[size];
-    for (int i = 0; i < size; ++i){
-        result[i] = get_Datum((T)m_bitmap[i]);
-    }
-
-    return PointerGetDatum(construct_array(
-            result,
-            size,
-            m_typoid,
-            m_typlen,
-            m_typbyval,
-            m_typalign
-            ));
+    Datum* result,
+    int size
+) const{
+    return construct_array(
+                result,
+                size,
+                m_typoid,
+                m_typlen,
+                m_typbyval,
+                m_typalign
+                );
 }
+
 
 /**
  * @brief the entry function for doing the bitwise operations,
@@ -329,14 +327,7 @@ ArrayHandle<T> Bitmap<T>::bitwise_proc
 
     result[0] = get_Datum((T)k);
 
-    return construct_array(
-            result,
-            k,
-            m_typoid,
-            m_typlen,
-            m_typbyval,
-            m_typalign
-            );
+    return to_ArrayType(result, k);
 }
 
 
@@ -405,14 +396,7 @@ ArrayHandle<T> Bitmap<T>::nonzero_positions(){
         }
     }
 
-    return construct_array(
-            result,
-            j,
-            m_typoid,
-            m_typlen,
-            m_typbyval,
-            m_typalign
-            );
+    return to_ArrayType(result, j);
 }
 
 } // namespace bitmap
