@@ -209,14 +209,20 @@ protected:
 
     // get the position in the bitmap for the input number.
     // The result is in range of [1, m_base]
-    inline int get_pos_word(T bit_pos){
+    inline int get_pos_word(int64 bit_pos){
         int pos = bit_pos % m_base;
         return 0 == pos  ? m_base : pos;
     }
 
     // get the number of words for representing the input number
-    inline int get_num_words(T bit_pos){
+    inline int64 get_num_words(int64 bit_pos){
         return (bit_pos + m_base - 1) / m_base;
+    }
+
+    // get the maximum 0s or 1s can be represented by a composite word
+    // for bitmap4, its 0x3F FF FF FF.
+    inline T max_bits_in_cw(){
+        return ((T)1 << (m_base - 1)) - 1;
     }
 
     // transform the specified value to a Datum

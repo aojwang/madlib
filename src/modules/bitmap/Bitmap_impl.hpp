@@ -5,7 +5,6 @@ namespace madlib {
 namespace modules {
 namespace bitmap {
 
-
 /**
  * @brief insert the input number to a composite word.
  *        three conditions need to be considered here (assume that the active
@@ -93,16 +92,6 @@ Bitmap<T>& Bitmap<T>::insert
     int64 num_words = 1;
     int i = 1;
 
-    // for 32-bit bitmap, the maximum number is (1 << 30) - 1
-    // for 64 bit bitmap, the maximum number is (1 << 62) - 1
-    madlib_assert(bit_pos > 0 && bit_pos < ((int64)1 << (m_base - 1)),
-        std::invalid_argument
-        ("the input number is greater than the supported maximum number"));
-
-    madlib_assert(m_size_per_add > 1,
-        std::invalid_argument
-        ("size_per_add should be greater than 2"));
-
     // visit each element of the bitmap array to find the right word to
     // insert the input number
     for (i = 1; i < m_size; ++i){
@@ -151,25 +140,48 @@ Bitmap<T>& Bitmap<T>::insert
 
     // reach the end of the bitmap array
     if (i == m_size || 1 == m_bitmap[0] || 0 == m_bitmap[i]){
+        int64 need_elems = 1;
+        T max_bits = max_bits_in_cw();
         bit_pos -= cur_pos;
         cur_pos = get_pos_word(bit_pos);
         num_words = get_num_words(bit_pos);
-        if (((1 == num_words) ? 1 : 2) + m_size > m_capacity){
-            // allocate new memory
-            m_capacity += m_size_per_add;
+        if (num_words <= max_bits + 1){
+            // 1 composite word can represent all zeros,
+            // then 2 new elements are enough
+            need_elems = (1 == num_words) ? 1 : 2;
+        }else{
+            // we need 2 more composite words to represent all zeros
+            need_elems = (num_words - 1 + max_bits - 1) / max_bits + 1;
+            num_words = (num_words - 1) % max_bits + 1;
+        }
+
+        // allocate new memory
+        if (need_elems + m_size > m_capacity){
+            m_capacity += ((need_elems + m_size_per_add - 1 ) / m_size_per_add)
+                          * m_size_per_add;
             T* newbitmap = new T[m_capacity];
             memset(newbitmap, 0x00, m_capacity * sizeof(T));
             memcpy(newbitmap, m_bitmap, m_size * sizeof(T));
             m_bitmap = newbitmap;
             m_bitmap_updated = true;
-         }
-        if (1 == num_words){
+        }
+
+        // fill the composite words
+        for (; need_elems > 2; --need_elems){
+            m_bitmap[i++] = m_sw_zero_mask | max_bits;
+            ++m_bitmap[0];
+        }
+
+        // the first word is composite word
+        // the second is a normal word
+        if ((2 == need_elems) && (num_words > 1)){
+            m_bitmap[i++] = m_sw_zero_mask | (T)(num_words - 1);
+            m_bitmap[i] = (T)1 << (cur_pos - 1);
+            m_bitmap[0] += 2;
+        }else{
+            // only one normal word can represent the input number
             m_bitmap[i] = (T)1 << (cur_pos - 1);
             m_bitmap[0] += 1;
-        }else{
-            m_bitmap[i] = m_sw_zero_mask | (T)(num_words - 1);
-            m_bitmap[i + 1] = (T)1 << (cur_pos - 1);
-            m_bitmap[0] += 2;
         }
 
         // set the size of the bitmap
