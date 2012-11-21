@@ -88,6 +88,74 @@ bitmap4_return_array::run(AnyType &args){
             (Oid)TypeTraits<ArrayHandle<int32> >::oid);
 }
 
+
+/**
+ * @brief get the bitmap representation for int64 array
+ */
+AnyType
+array_return_bitmap4::run(AnyType &args){
+    return BitmapUtil::array_return_bitmap<int32>(args);
+}
+
+
+/**
+ * @brief the implementation of = operator
+ */
+AnyType
+bitmap4_eq::run(AnyType &args){
+    return BitmapUtil::bitmap_eq<int32>(args, true);
+}
+
+
+/**
+ * @brief the implementation of != operator
+ */
+AnyType
+bitmap4_neq::run(AnyType &args){
+    return BitmapUtil::bitmap_eq<int32>(args, false);
+}
+
+/**
+ * @brief the implementation of > operator
+ */
+AnyType
+bitmap4_gt::run(AnyType &args){
+    return BitmapUtil::bitmap_gt<int32>(args, true);
+}
+
+/**
+ * @brief the implementation of < operator
+ */
+AnyType
+bitmap4_lt::run(AnyType &args){
+    return BitmapUtil::bitmap_gt<int32>(args, false);
+}
+
+/**
+ * @brief the implementation of >= operator
+ */
+AnyType
+bitmap4_ge::run(AnyType &args){
+    return BitmapUtil::bitmap_ge<int32>(args, true);
+}
+
+
+/**
+ * @brief the implementation of <= operator
+ */
+AnyType
+bitmap4_le::run(AnyType &args){
+    return BitmapUtil::bitmap_ge<int32>(args, false);
+}
+
+/**
+ * @brief compare the two bitmaps
+ */
+AnyType
+bitmap4_cmp::run(AnyType &args){
+    return BitmapUtil::bitmap_cmp<int32>(args);
+}
+
 } // bitmap
 } // modules
 } // madlib

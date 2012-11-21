@@ -22,7 +22,8 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
  *
  */
 class BitmapUtil{
-
+protected:
+    enum BITMAPOP {EQ = 0, GT = 1, LT = -1} ;
 public:
 
 /**
@@ -228,7 +229,7 @@ bitmap_nonzero_count
  * @note the position starts from 1.
  *
  */
-template<typename T>
+template <typename T>
 static
 AnyType
 bitmap_nonzero_positions
@@ -239,6 +240,138 @@ bitmap_nonzero_positions
     Bitmap<T>bitmap(args[0].getAs< ArrayHandle<T> >(true, false), 0);
 
     return bitmap.nonzero_positions();
+}
+
+
+/**
+ * @brief the greater than (>) and less than (<) operators implementation
+ *
+ * @param args[0]   the bitmap array
+ * @param args[1]   the bitmap array
+ * @param is_gt     true if the invoker implements the > operator
+ *                  false if the invoker implements the < operator
+ *
+ * @return is_gt ? args[0] > args[1] : args[0] < args[1]
+ * @note currently, we will never use the > operator. Therefore, we just
+ *       compare the length of the bitmap array for simplicity. This function
+ *       will be used in the btree operator class.
+ *
+ */
+template <typename T>
+static
+AnyType
+bitmap_gt
+(
+    AnyType &args,
+    bool is_gt = true
+){
+    BITMAPOP op = bitmap_cmp_internal<T>(args);
+    return (is_gt ? op == GT : op == LT);
+}
+
+
+/**
+ * @brief the >= and <= operators implementation
+ *
+ * @param args[0]   the bitmap array
+ * @param args[1]   the bitmap array
+ * @param is_ge     true if the invoker implements the >= operator
+ *                  false if the invoker implements the < operator
+ *
+ * @return is_gt ? args[0] >= args[1] : args[0] <= args[1]
+ * @note currently, we will never use the >= operator. Therefore, we just
+ *       compare the length of the bitmap array for simplicity. This function
+ *       will be used in the btree operator class.
+ *
+ */
+template <typename T>
+static
+AnyType
+bitmap_ge
+(
+    AnyType &args,
+    bool is_ge = true
+){
+    BITMAPOP op = bitmap_cmp_internal<T>(args);
+    return (is_ge ? op == GT : op == LT) || (op == EQ);
+}
+
+
+/**
+ * @brief the = operator implementation
+ *
+ * @param args[0]   the bitmap array
+ * @param args[1]   the bitmap array
+ * @param is_eq     true if the invoker implements = operator
+ *                  false if the invoker implements != operator
+ *
+ * @return is_eq ? args[0] == args[1] : !(args[0] == args[1])
+ *
+ */
+template <typename T>
+static
+AnyType
+bitmap_eq
+(
+    AnyType &args,
+    bool is_eq = true
+){
+
+    // as the first element of bitmap is the size of the array
+    // we don't need to care about the size of the array
+    bool res = (bitmap_cmp_internal<T>(args) == EQ);
+    return is_eq ? res : !res;
+}
+
+
+/**
+ * @brief compare the two bitmap
+ *
+ * @param args[0]   the bitmap array
+ * @param args[1]   the bitmap array
+ *
+ * @return 0 for equality; 1 for greater than; and -1 for less than
+ *
+ */
+template <typename T>
+static
+AnyType
+bitmap_cmp
+(
+    AnyType &args
+){
+    return static_cast<int32>(bitmap_cmp_internal<T>(args));
+}
+
+
+/**
+ * @brief get the bitmap representation for the input array.
+ *
+ * @param args[0]   the input array.
+ *
+ * @return the bitmap for the input array.
+ * @note T is the type of the bitmap
+ *       the type of input array will be int64
+ */
+template <typename T>
+static
+AnyType
+array_return_bitmap
+(
+    AnyType &args
+){
+    ArrayHandle<int64> handle = args[0].getAs< ArrayHandle<int64> >();
+    const int64* array = handle.ptr();
+    int size = handle.size();
+    int bsize = (size >> 5) / 10;
+    bsize = bsize < 2 ? 2 : bsize;
+    Bitmap<T> bitmap(bsize, bsize);
+
+    for (int i = 0; i < size; ++i){
+        bitmap.insert(array[i]);
+    }
+
+    return AnyType(bitmap.to_ArrayHandle(false), InvalidOid);
 }
 
 
@@ -297,9 +430,12 @@ bitmap_out
     ArrayHandle<T> array = arg.getAs< ArrayHandle<T> >(true, false);
     int size = array[0];
     bool is_bit32 = sizeof(T) == sizeof(int32);
+    // we must use the palloc here rather than new operator
+    // otherwise, db will crash. NOTE: TODO need to investigate the reason
     char *res = (char*)palloc0(size *
             (is_bit32 ? (MAXBITSOFINT32 + 1) : (MAXBITSOFINT64 + 1)) *
             sizeof(char));
+    //char *res = new char[size * (is_bit32 ? (MAXBITSOFINT32 + 1) : (MAXBITSOFINT64 + 1))];
 
     char *res_begin = res;
     char temp[MAXBITSOFINT64 + 1] = {'\0'};
@@ -318,25 +454,54 @@ bitmap_out
     }
 
     // remove the last comma
-    *res = '\0';
+    *(--res) = '\0';
     return AnyType(res_begin);
 }
 
 protected:
+template <typename T>
 static
-char* int32_to_string(int32 value, char* result){
+BITMAPOP
+bitmap_cmp_internal
+(
+    AnyType &args
+){
+    // get the bitmap as array
+    const T* lhs = (args[0].getAs< ArrayHandle<T> >(true, false)).ptr();
+    const T* rhs = (args[1].getAs< ArrayHandle<T> >(true, false)).ptr();
+
+    bool res = (0 == memcmp((const void*)lhs, (const void*)rhs,
+                        lhs[0] * sizeof(T)));
+    return res ? EQ :
+            lhs[0] > rhs[0] ? GT : LT;
+}
+
+
+static
+char*
+int32_to_string
+(
+    int32 value,
+    char* result
+){
     pg_ltoa(value, result);
     return result;
 }
 
 static
-char* int64_to_string(int64 value, char* result){
+char*
+int64_to_string
+(
+    int64 value,
+    char* result
+){
     int len = 0;
     if ((len = snprintf(result, MAXBITSOFINT64, INT64FORMAT, value)) < 0)
         elog(ERROR, "could not format int8");
     result[len] = '\0';
     return result;
 }
+
 }; // class BitmapUtil
 
 } // namespace bitmap

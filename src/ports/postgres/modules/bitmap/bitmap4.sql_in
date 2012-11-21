@@ -196,7 +196,226 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
 
+/*
+ * @brief get the bitmap representation for the array
+ *
+ * @param args[0]   the input array
+ *
+ * @return the bitmap representing the array.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.array_return_bitmap4
+(
+    INT8[]
+)
+RETURNS MADLIB_SCHEMA.bitmap4
+AS 'MODULE_PATHNAME'
+LANGUAGE C IMMUTABLE STRICT;
+
+
+/*
+ * @brief The implementation of = operation.
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return the result of args[0] = args[1].
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_eq
+(
+    MADLIB_SCHEMA.bitmap4,
+    MADLIB_SCHEMA.bitmap4
+)
+RETURNS BOOL
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief The implementation of <> operation.
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return the result of args[0] <> args[1].
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_neq
+(
+    MADLIB_SCHEMA.bitmap4,
+    MADLIB_SCHEMA.bitmap4
+)
+RETURNS BOOL
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief The implementation of > operation.
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return the result of args[0] > args[1].
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_gt
+(
+    MADLIB_SCHEMA.bitmap4,
+    MADLIB_SCHEMA.bitmap4
+)
+RETURNS BOOL
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief The implementation of < operation.
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return the result of args[0] < args[1].
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_lt
+(
+    MADLIB_SCHEMA.bitmap4,
+    MADLIB_SCHEMA.bitmap4
+)
+RETURNS BOOL
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief The implementation of >= operation.
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return the result of args[0] >= args[1].
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_ge
+(
+    MADLIB_SCHEMA.bitmap4,
+    MADLIB_SCHEMA.bitmap4
+)
+RETURNS BOOL
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief The implementation of <= operation.
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return the result of args[0] <= args[1].
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_le
+(
+    MADLIB_SCHEMA.bitmap4,
+    MADLIB_SCHEMA.bitmap4
+)
+RETURNS BOOL
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief compare two bitmaps
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return 0 for equality; 1 for greater than; and -1 for less than.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_cmp
+(
+    MADLIB_SCHEMA.bitmap4,
+    MADLIB_SCHEMA.bitmap4
+)
+RETURNS INT
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+CREATE OPERATOR MADLIB_SCHEMA.= (
+    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
+    procedure = MADLIB_SCHEMA.bitmap4_eq,
+    commutator = operator(MADLIB_SCHEMA.=) ,
+    negator = operator(MADLIB_SCHEMA.<>) ,
+    restrict = eqsel, join = eqjoinsel
+);
+
+CREATE OPERATOR MADLIB_SCHEMA.<> (
+    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
+    procedure = MADLIB_SCHEMA.bitmap4_neq,
+    commutator = operator(MADLIB_SCHEMA.<>) ,
+    negator = operator(MADLIB_SCHEMA.=) ,
+    restrict = eqsel, join = eqjoinsel
+);
+
+CREATE OPERATOR MADLIB_SCHEMA.> (
+    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
+    procedure = MADLIB_SCHEMA.bitmap4_gt,
+    commutator = operator(MADLIB_SCHEMA.<) ,
+    negator = operator(MADLIB_SCHEMA.<=) ,
+    restrict = scalargtsel, join = scalargtjoinsel
+);
+
+
+CREATE OPERATOR MADLIB_SCHEMA.>= (
+    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
+    procedure = MADLIB_SCHEMA.bitmap4_ge,
+    commutator = operator(MADLIB_SCHEMA.<=) ,
+    negator = operator(MADLIB_SCHEMA.<) ,
+    restrict = scalargtsel, join = scalargtjoinsel
+);
+
+CREATE OPERATOR MADLIB_SCHEMA.< (
+    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
+    procedure = MADLIB_SCHEMA.bitmap4_lt,
+    commutator = operator(MADLIB_SCHEMA.>) ,
+    negator = operator(MADLIB_SCHEMA.>=) ,
+    restrict = scalarltsel, join = scalarltjoinsel
+);
+
+CREATE OPERATOR MADLIB_SCHEMA.<= (
+    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
+    procedure = MADLIB_SCHEMA.bitmap4_le,
+    commutator = operator(MADLIB_SCHEMA.>=) ,
+    negator = operator(MADLIB_SCHEMA.>) ,
+    restrict = scalarltsel, join = scalarltjoinsel
+);
+
+
+/*
+ * define the btree index, so that we can use the type
+ * in GROUP BY clause
+ */
+CREATE OPERATOR CLASS MADLIB_SCHEMA.bitmap4_index_btree
+DEFAULT FOR TYPE MADLIB_SCHEMA.bitmap4 USING btree AS
+OPERATOR        1       MADLIB_SCHEMA.< ,
+OPERATOR        2       MADLIB_SCHEMA.<= ,
+OPERATOR        3       MADLIB_SCHEMA.= ,
+OPERATOR        4       MADLIB_SCHEMA.>= ,
+OPERATOR        5       MADLIB_SCHEMA.>,
+FUNCTION        1       MADLIB_SCHEMA.bitmap4_cmp(MADLIB_SCHEMA.bitmap4, MADLIB_SCHEMA.bitmap4);
+
+
+
 CREATE OPERATOR | (
+    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
+    procedure = MADLIB_SCHEMA.bitmap4_or
+);
+
+CREATE OPERATOR MADLIB_SCHEMA.| (
     leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
     procedure = MADLIB_SCHEMA.bitmap4_or
 );
@@ -204,12 +423,6 @@ CREATE OPERATOR | (
 CREATE OPERATOR & (
     leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
     procedure = MADLIB_SCHEMA.bitmap4_and
-);
-
-
-CREATE OPERATOR MADLIB_SCHEMA.| (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
-    procedure = MADLIB_SCHEMA.bitmap4_or
 );
 
 CREATE OPERATOR MADLIB_SCHEMA.& (
@@ -220,3 +433,7 @@ CREATE OPERATOR MADLIB_SCHEMA.& (
 
 CREATE CAST (MADLIB_SCHEMA.bitmap4 AS INT4[]) 
 WITH FUNCTION MADLIB_SCHEMA.bitmap4_return_array(MADLIB_SCHEMA.bitmap4);
+
+
+CREATE CAST (INT8[] AS MADLIB_SCHEMA.bitmap4) 
+WITH FUNCTION MADLIB_SCHEMA.array_return_bitmap4(INT8[]);

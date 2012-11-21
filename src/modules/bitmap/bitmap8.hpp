@@ -37,3 +37,13 @@ DECLARE_UDF(bitmap, bitmap8_in)
 DECLARE_UDF(bitmap, bitmap8_return_array)
 DECLARE_UDF(bitmap, bitmap8_nonzero_count)
 DECLARE_UDF(bitmap, bitmap8_nonzero_positions)
+DECLARE_UDF(bitmap, array_return_bitmap8)
+DECLARE_UDF(bitmap, bitmap8_eq)
+DECLARE_UDF(bitmap, bitmap8_neq)
+DECLARE_UDF(bitmap, bitmap8_le)
+DECLARE_UDF(bitmap, bitmap8_ge)
+DECLARE_UDF(bitmap, bitmap8_lt)
+DECLARE_UDF(bitmap, bitmap8_gt)
+DECLARE_UDF(bitmap, bitmap8_cmp)
+
+
