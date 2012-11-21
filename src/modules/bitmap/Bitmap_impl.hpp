@@ -326,8 +326,8 @@ ArrayHandle<T> Bitmap<T>::bitwise_proc
     }
 
     // post-processing
-    k = (this->*postproc)(result, k, m_bitmap, i, m_size);
-    k = (this->*postproc)(result, k, rhs.m_bitmap, j, rhs.m_size);
+    k = (this->*postproc)(result, k, m_bitmap, i, m_size, pre_word);
+    k = (this->*postproc)(result, k, rhs.m_bitmap, j, rhs.m_size, pre_word);
 
     // if the bitmap only has one word, and the word is a composite word with all
     // values are 0, then trim it

@@ -50,7 +50,7 @@ template <typename T>
 class Bitmap{
     // function pointers
     typedef T (Bitmap<T>::*bitwise_op)(T, T);
-    typedef int (Bitmap<T>::*bitwise_postproc)(Datum*, int, T*, int, int);
+    typedef int (Bitmap<T>::*bitwise_postproc)(Datum*, int, T*, int, int, T);
 
 public:
     //ctor
@@ -294,18 +294,29 @@ protected:
 
     // the post-processing for the OR operation. Here, we need to concat
     // the remainder bitmap elements to the result
-    inline int or_postproc(Datum* result, int res_start, T* bitmap,
-                            int bm_start, int bm_end){
-        for (; bm_start < bm_end; ++bm_start, ++res_start)
-            result[res_start] = get_Datum(bitmap[bm_start]);
+    inline int or_postproc(Datum* result, int k, T* bitmap,
+                            int i, int n, T pre_word){
+        for (; i < n; ++i, ++k){
+            T temp = (bitmap[i] < 0) ? bitmap[i] :
+                        ((bitmap[i] == (~m_sw_zero_mask)) ?
+                        (m_sw_one_mask | 1) : bitmap[i]);
+            if (k >= 2 && pre_word < 0 && temp < 0 &&
+                (0 == ((pre_word ^ temp) & (m_wordcnt_mask + 1)))){
+                pre_word += (temp & m_wordcnt_mask);
+                result[--k] = get_Datum(pre_word);
+            }else{
+                result[k] = get_Datum(bitmap[i]);
+                pre_word = bitmap[i];
+            }
+        }
 
-        return res_start;
+        return k;
 
     }
 
     // the post-processing for the AND operation. Here, we need do nothing.
-    inline int and_postproc(Datum*, int res_start, T*, int, int){
-        return res_start;
+    inline int and_postproc(Datum*, int k, T*, int, int, T){
+        return k;
     }
 
 private:
