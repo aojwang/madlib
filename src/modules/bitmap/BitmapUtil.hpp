@@ -54,8 +54,8 @@ bitmap_agg_sfunc
 (
     AnyType &args
 ){
-    int64 input_bit = args[1].getAs<int64>();
-    int size_per_add = args[2].getAs<int32>();
+    int64_t input_bit = args[1].getAs<int64_t>(true, false);
+    int size_per_add = args[2].getAs<int32_t>();
     Bitmap<T> bitmap;
 
     // the first time of entering the step function,
@@ -340,7 +340,7 @@ bitmap_cmp
 (
     AnyType &args
 ){
-    return static_cast<int32>(bitmap_cmp_internal<T>(args));
+    return static_cast<int32_t>(bitmap_cmp_internal<T>(args));
 }
 
 
@@ -351,7 +351,7 @@ bitmap_cmp
  *
  * @return the bitmap for the input array.
  * @note T is the type of the bitmap
- *       the type of input array will be int64
+ *       the type of input array will be int64_t
  */
 template <typename T>
 static
@@ -360,8 +360,8 @@ array_return_bitmap
 (
     AnyType &args
 ){
-    ArrayHandle<int64> handle = args[0].getAs< ArrayHandle<int64> >();
-    const int64* array = handle.ptr();
+    ArrayHandle<int64_t> handle = args[0].getAs< ArrayHandle<int64_t> >();
+    const int64_t* array = handle.ptr();
     int size = handle.size();
     int bsize = (size >> 5) / 10;
     bsize = bsize < 2 ? 2 : bsize;
@@ -429,7 +429,7 @@ bitmap_out
     AnyType arg = args[0];
     ArrayHandle<T> array = arg.getAs< ArrayHandle<T> >(true, false);
     int size = array[0];
-    bool is_bit32 = sizeof(T) == sizeof(int32);
+    bool is_bit32 = sizeof(T) == sizeof(int32_t);
     // we must use the palloc here rather than new operator
     // otherwise, db will crash. NOTE: TODO need to investigate the reason
     char *res = (char*)palloc0(size *
@@ -466,7 +466,13 @@ bitmap_cmp_internal
 (
     AnyType &args
 ){
-    // get the bitmap as array
+    if (args[0].isNull() & args[1].isNull())
+        return EQ;
+    if (args[0].isNull() && !args[1].isNull())
+        return LT;
+    if (!args[0].isNull() && args[1].isNull())
+        return GT;
+
     const T* lhs = (args[0].getAs< ArrayHandle<T> >(true, false)).ptr();
     const T* rhs = (args[1].getAs< ArrayHandle<T> >(true, false)).ptr();
 
@@ -481,7 +487,7 @@ static
 char*
 int32_to_string
 (
-    int32 value,
+    int32_t value,
     char* result
 ){
     pg_ltoa(value, result);
@@ -492,7 +498,7 @@ static
 char*
 int64_to_string
 (
-    int64 value,
+    int64_t value,
     char* result
 ){
     int len = 0;

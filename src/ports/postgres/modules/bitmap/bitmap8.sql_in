@@ -99,8 +99,8 @@ CREATE AGGREGATE MADLIB_SCHEMA.bitmap8_agg
 )
 (
     SFUNC=MADLIB_SCHEMA.bitmap8_agg_sfunc,
-    STYPE=MADLIB_SCHEMA.bitmap8,
-    m4_ifdef(`__GREENPLUM__',`prefunc=MADLIB_SCHEMA.bitmap8_agg_pfunc')
+    STYPE=MADLIB_SCHEMA.bitmap8
+    m4_ifdef(`__GREENPLUM__',`,prefunc=MADLIB_SCHEMA.bitmap8_agg_pfunc')
 );
 
 

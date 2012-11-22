@@ -7,13 +7,12 @@ namespace madlib {
 namespace modules {
 namespace bitmap {
 
-
 /**
  * @brief the step function for the bitmap aggregate.
  */
 AnyType
 bitmap4_agg_sfunc::run(AnyType &args){
-   return BitmapUtil::bitmap_agg_sfunc<int32>(args);
+   return BitmapUtil::bitmap_agg_sfunc<int32_t>(args);
 }
 
 /**
@@ -21,7 +20,7 @@ bitmap4_agg_sfunc::run(AnyType &args){
  */
 AnyType
 bitmap4_agg_pfunc::run(AnyType &args){
-    return BitmapUtil::bitmap_agg_pfunc<int32>(args);
+    return BitmapUtil::bitmap_agg_pfunc<int32_t>(args);
 }
 
 
@@ -30,7 +29,7 @@ bitmap4_agg_pfunc::run(AnyType &args){
  */
 AnyType
 bitmap4_and::run(AnyType &args){
-    return BitmapUtil::bitmap_and<int32>(args);
+    return BitmapUtil::bitmap_and<int32_t>(args);
 }
 
 
@@ -39,7 +38,7 @@ bitmap4_and::run(AnyType &args){
  */
 AnyType
 bitmap4_or::run(AnyType &args){
-    return BitmapUtil::bitmap_or<int32>(args);
+    return BitmapUtil::bitmap_or<int32_t>(args);
 }
 
 
@@ -48,7 +47,7 @@ bitmap4_or::run(AnyType &args){
  */
 AnyType
 bitmap4_nonzero_count::run(AnyType &args){
-    return BitmapUtil::bitmap_nonzero_count<int32>(args);
+    return BitmapUtil::bitmap_nonzero_count<int32_t>(args);
 }
 
 
@@ -57,7 +56,7 @@ bitmap4_nonzero_count::run(AnyType &args){
  */
 AnyType
 bitmap4_nonzero_positions::run(AnyType &args){
-    return BitmapUtil::bitmap_nonzero_positions<int32>(args);
+    return BitmapUtil::bitmap_nonzero_positions<int32_t>(args);
 }
 
 
@@ -66,7 +65,7 @@ bitmap4_nonzero_positions::run(AnyType &args){
  */
 AnyType
 bitmap4_in::run(AnyType &args){
-    return BitmapUtil::bitmap_in<int32>(args);
+    return BitmapUtil::bitmap_in<int32_t>(args);
 }
 
 
@@ -75,7 +74,7 @@ bitmap4_in::run(AnyType &args){
  */
 AnyType
 bitmap4_out::run(AnyType &args){
-    return BitmapUtil::bitmap_out<int32>(args);
+    return BitmapUtil::bitmap_out<int32_t>(args);
 }
 
 
@@ -84,8 +83,8 @@ bitmap4_out::run(AnyType &args){
  */
 AnyType
 bitmap4_return_array::run(AnyType &args){
-    return AnyType(args[0].getAs<ArrayHandle<int32> >(true),
-            (Oid)TypeTraits<ArrayHandle<int32> >::oid);
+    return AnyType(args[0].getAs<ArrayHandle<int32_t> >(true),
+            (Oid)TypeTraits<ArrayHandle<int32_t> >::oid);
 }
 
 
@@ -94,7 +93,7 @@ bitmap4_return_array::run(AnyType &args){
  */
 AnyType
 array_return_bitmap4::run(AnyType &args){
-    return BitmapUtil::array_return_bitmap<int32>(args);
+    return BitmapUtil::array_return_bitmap<int32_t>(args);
 }
 
 
@@ -103,7 +102,7 @@ array_return_bitmap4::run(AnyType &args){
  */
 AnyType
 bitmap4_eq::run(AnyType &args){
-    return BitmapUtil::bitmap_eq<int32>(args, true);
+    return BitmapUtil::bitmap_eq<int32_t>(args, true);
 }
 
 
@@ -112,7 +111,7 @@ bitmap4_eq::run(AnyType &args){
  */
 AnyType
 bitmap4_neq::run(AnyType &args){
-    return BitmapUtil::bitmap_eq<int32>(args, false);
+    return BitmapUtil::bitmap_eq<int32_t>(args, false);
 }
 
 /**
@@ -120,7 +119,7 @@ bitmap4_neq::run(AnyType &args){
  */
 AnyType
 bitmap4_gt::run(AnyType &args){
-    return BitmapUtil::bitmap_gt<int32>(args, true);
+    return BitmapUtil::bitmap_gt<int32_t>(args, true);
 }
 
 /**
@@ -128,7 +127,7 @@ bitmap4_gt::run(AnyType &args){
  */
 AnyType
 bitmap4_lt::run(AnyType &args){
-    return BitmapUtil::bitmap_gt<int32>(args, false);
+    return BitmapUtil::bitmap_gt<int32_t>(args, false);
 }
 
 /**
@@ -136,7 +135,7 @@ bitmap4_lt::run(AnyType &args){
  */
 AnyType
 bitmap4_ge::run(AnyType &args){
-    return BitmapUtil::bitmap_ge<int32>(args, true);
+    return BitmapUtil::bitmap_ge<int32_t>(args, true);
 }
 
 
@@ -145,7 +144,7 @@ bitmap4_ge::run(AnyType &args){
  */
 AnyType
 bitmap4_le::run(AnyType &args){
-    return BitmapUtil::bitmap_ge<int32>(args, false);
+    return BitmapUtil::bitmap_ge<int32_t>(args, false);
 }
 
 /**
@@ -153,7 +152,7 @@ bitmap4_le::run(AnyType &args){
  */
 AnyType
 bitmap4_cmp::run(AnyType &args){
-    return BitmapUtil::bitmap_cmp<int32>(args);
+    return BitmapUtil::bitmap_cmp<int32_t>(args);
 }
 
 } // bitmap

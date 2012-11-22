@@ -28,6 +28,7 @@
  *
  */
 
+
 DECLARE_UDF(bitmap, bitmap4_agg_sfunc)
 DECLARE_UDF(bitmap, bitmap4_agg_pfunc)
 DECLARE_UDF(bitmap, bitmap4_and)
@@ -45,3 +46,4 @@ DECLARE_UDF(bitmap, bitmap4_ge)
 DECLARE_UDF(bitmap, bitmap4_lt)
 DECLARE_UDF(bitmap, bitmap4_gt)
 DECLARE_UDF(bitmap, bitmap4_cmp)
+

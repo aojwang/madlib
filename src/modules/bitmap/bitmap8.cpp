@@ -14,7 +14,7 @@ namespace bitmap {
  */
 AnyType
 bitmap8_agg_sfunc::run(AnyType &args){
-   return BitmapUtil::bitmap_agg_sfunc<int64>(args);
+   return BitmapUtil::bitmap_agg_sfunc<int64_t>(args);
 }
 
 
@@ -23,7 +23,7 @@ bitmap8_agg_sfunc::run(AnyType &args){
  */
 AnyType
 bitmap8_agg_pfunc::run(AnyType &args){
-    return BitmapUtil::bitmap_agg_pfunc<int64>(args);
+    return BitmapUtil::bitmap_agg_pfunc<int64_t>(args);
 }
 
 
@@ -32,7 +32,7 @@ bitmap8_agg_pfunc::run(AnyType &args){
  */
 AnyType
 bitmap8_and::run(AnyType &args){
-    return BitmapUtil::bitmap_and<int64>(args);
+    return BitmapUtil::bitmap_and<int64_t>(args);
 }
 
 
@@ -41,7 +41,7 @@ bitmap8_and::run(AnyType &args){
  */
 AnyType
 bitmap8_or::run(AnyType &args){
-    return BitmapUtil::bitmap_or<int64>(args);
+    return BitmapUtil::bitmap_or<int64_t>(args);
 }
 
 
@@ -50,7 +50,7 @@ bitmap8_or::run(AnyType &args){
  */
 AnyType
 bitmap8_nonzero_count::run(AnyType &args){
-    return BitmapUtil::bitmap_nonzero_count<int64>(args);
+    return BitmapUtil::bitmap_nonzero_count<int64_t>(args);
 }
 
 
@@ -59,7 +59,7 @@ bitmap8_nonzero_count::run(AnyType &args){
  */
 AnyType
 bitmap8_nonzero_positions::run(AnyType &args){
-    return BitmapUtil::bitmap_nonzero_positions<int64>(args);
+    return BitmapUtil::bitmap_nonzero_positions<int64_t>(args);
 }
 
 
@@ -68,7 +68,7 @@ bitmap8_nonzero_positions::run(AnyType &args){
  */
 AnyType
 bitmap8_in::run(AnyType &args){
-    return BitmapUtil::bitmap_in<int64>(args);
+    return BitmapUtil::bitmap_in<int64_t>(args);
 }
 
 
@@ -77,7 +77,7 @@ bitmap8_in::run(AnyType &args){
  */
 AnyType
 bitmap8_out::run(AnyType &args){
-    return BitmapUtil::bitmap_out<int64>(args);
+    return BitmapUtil::bitmap_out<int64_t>(args);
 }
 
 
@@ -86,8 +86,8 @@ bitmap8_out::run(AnyType &args){
  */
 AnyType
 bitmap8_return_array::run(AnyType &args){
-    return AnyType(args[0].getAs<ArrayHandle<int64> >(true),
-            (Oid)TypeTraits<ArrayHandle<int64> >::oid);
+    return AnyType(args[0].getAs<ArrayHandle<int64_t> >(true),
+            (Oid)(TypeTraits<ArrayHandle<int64_t> >::oid));
 }
 
 
@@ -96,7 +96,7 @@ bitmap8_return_array::run(AnyType &args){
  */
 AnyType
 array_return_bitmap8::run(AnyType &args){
-    return BitmapUtil::array_return_bitmap<int64>(args);
+    return BitmapUtil::array_return_bitmap<int64_t>(args);
 }
 
 
@@ -105,7 +105,7 @@ array_return_bitmap8::run(AnyType &args){
  */
 AnyType
 bitmap8_eq::run(AnyType &args){
-    return BitmapUtil::bitmap_eq<int64>(args, true);
+    return BitmapUtil::bitmap_eq<int64_t>(args, true);
 }
 
 
@@ -114,7 +114,7 @@ bitmap8_eq::run(AnyType &args){
  */
 AnyType
 bitmap8_neq::run(AnyType &args){
-    return BitmapUtil::bitmap_eq<int64>(args, false);
+    return BitmapUtil::bitmap_eq<int64_t>(args, false);
 }
 
 /**
@@ -122,7 +122,7 @@ bitmap8_neq::run(AnyType &args){
  */
 AnyType
 bitmap8_gt::run(AnyType &args){
-    return BitmapUtil::bitmap_gt<int64>(args, true);
+    return BitmapUtil::bitmap_gt<int64_t>(args, true);
 }
 
 /**
@@ -130,7 +130,7 @@ bitmap8_gt::run(AnyType &args){
  */
 AnyType
 bitmap8_lt::run(AnyType &args){
-    return BitmapUtil::bitmap_gt<int64>(args, false);
+    return BitmapUtil::bitmap_gt<int64_t>(args, false);
 }
 
 /**
@@ -138,7 +138,7 @@ bitmap8_lt::run(AnyType &args){
  */
 AnyType
 bitmap8_ge::run(AnyType &args){
-    return BitmapUtil::bitmap_ge<int64>(args, true);
+    return BitmapUtil::bitmap_ge<int64_t>(args, true);
 }
 
 
@@ -147,7 +147,7 @@ bitmap8_ge::run(AnyType &args){
  */
 AnyType
 bitmap8_le::run(AnyType &args){
-    return BitmapUtil::bitmap_ge<int64>(args, false);
+    return BitmapUtil::bitmap_ge<int64_t>(args, false);
 }
 
 /**
@@ -155,7 +155,7 @@ bitmap8_le::run(AnyType &args){
  */
 AnyType
 bitmap8_cmp::run(AnyType &args){
-    return BitmapUtil::bitmap_cmp<int64>(args);
+    return BitmapUtil::bitmap_cmp<int64_t>(args);
 }
 
 

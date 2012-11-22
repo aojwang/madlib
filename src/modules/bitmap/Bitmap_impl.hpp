@@ -86,10 +86,10 @@ template <typename T>
 inline
 Bitmap<T>& Bitmap<T>::insert
 (
-    int64 bit_pos
+    int64_t bit_pos
 ){
-    int64 cur_pos = 0;
-    int64 num_words = 1;
+    int64_t cur_pos = 0;
+    int64_t num_words = 1;
     int i = 1;
 
     // visit each element of the bitmap array to find the right word to
@@ -140,7 +140,7 @@ Bitmap<T>& Bitmap<T>::insert
 
     // reach the end of the bitmap array
     if (i == m_size || 1 == m_bitmap[0] || 0 == m_bitmap[i]){
-        int64 need_elems = 1;
+        int64_t need_elems = 1;
         T max_bits = max_bits_in_cw();
         bit_pos -= cur_pos;
         cur_pos = get_pos_word(bit_pos);

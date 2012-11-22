@@ -307,8 +307,8 @@ struct TypeTraits<MutableArrayHandle<int32_t> >
 };
 
 template <>
-struct TypeTraits<ArrayHandle<int64> >
-  : public TypeTraitsBase<ArrayHandle<int64> > {
+struct TypeTraits<ArrayHandle<int64_t> >
+  : public TypeTraitsBase<ArrayHandle<int64_t> > {
     enum { oid = INT8ARRAYOID };
     enum { isMutable = dbal::Immutable };
     enum { typeClass = dbal::ArrayType };
@@ -317,8 +317,8 @@ struct TypeTraits<ArrayHandle<int64> >
 };
 
 template <>
-struct TypeTraits<MutableArrayHandle<int64> >
-  : public TypeTraitsBase<MutableArrayHandle<int64> > {
+struct TypeTraits<MutableArrayHandle<int64_t> >
+  : public TypeTraitsBase<MutableArrayHandle<int64_t> > {
     enum { oid = INT8ARRAYOID };
     enum { isMutable = dbal::Mutable };
     enum { typeClass = dbal::ArrayType };

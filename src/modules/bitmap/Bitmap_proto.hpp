@@ -150,7 +150,7 @@ public:
     }
 
     // insert a bit to the bitmap
-    inline Bitmap& insert(int64 bit_pos);
+    inline Bitmap& insert(int64_t bit_pos);
 
     // transform the bitmap to an ArrayHandle instance
     inline ArrayHandle<T> to_ArrayHandle(bool use_capacity = true);
@@ -183,19 +183,19 @@ protected:
     inline ArrayType* to_ArrayType(Datum* result, int size) const;
 
     // get the number of 1s
-    inline T get_nonzero_cnt(int32 value){
-        uint32 res = value;
-        res = BM_ROUND(res, 0, uint32);
-        res = BM_ROUND(res, 1, uint32);
-        res = BM_ROUND(res, 2, uint32);
-        res = BM_ROUND(res, 3, uint32);
+    inline T get_nonzero_cnt(int32_t value){
+        uint32_t res = value;
+        res = BM_ROUND(res, 0, uint32_t);
+        res = BM_ROUND(res, 1, uint32_t);
+        res = BM_ROUND(res, 2, uint32_t);
+        res = BM_ROUND(res, 3, uint32_t);
         res = BM_ROUND(res, 4, uint32);
 
         return static_cast<T>(res);
     }
 
     // get the number of 1s
-    inline T get_nonzero_cnt(int64 value){
+    inline T get_nonzero_cnt(int64_t value){
         uint64 res = value;
         res = BM_ROUND(res, 0, uint64);
         res = BM_ROUND(res, 1, uint64);
@@ -209,13 +209,13 @@ protected:
 
     // get the position in the bitmap for the input number.
     // The result is in range of [1, m_base]
-    inline int get_pos_word(int64 bit_pos){
+    inline int get_pos_word(int64_t bit_pos){
         int pos = bit_pos % m_base;
         return 0 == pos  ? m_base : pos;
     }
 
     // get the number of words for representing the input number
-    inline int64 get_num_words(int64 bit_pos){
+    inline int64_t get_num_words(int64_t bit_pos){
         return (bit_pos + m_base - 1) / m_base;
     }
 
@@ -226,32 +226,32 @@ protected:
     }
 
     // transform the specified value to a Datum
-    inline Datum get_Datum(int32 elem){
+    inline Datum get_Datum(int32_t elem){
         return Int32GetDatum(elem);
     }
 
     // transform the specified value to a Datum
-    inline Datum get_Datum(int64 elem){
+    inline Datum get_Datum(int64_t elem){
         return Int64GetDatum(elem);
     }
 
     // get the value from the given Datum
-    inline Datum get_value(int32 elem){
+    inline Datum get_value(int32_t elem){
         return Int32GetDatum(elem);
     }
 
     // get the value from the given Datum
-    inline Datum get_value(int64 elem){
+    inline Datum get_value(int64_t elem){
         return Int64GetDatum(elem);
     }
 
     // get the OID for int32
-    inline Oid get_Oid(int32){
+    inline Oid get_Oid(int32_t){
         return INT4OID;
     }
 
-    // get the OID for int64
-    inline Oid get_Oid(int64){
+    // get the OID for int64_t
+    inline Oid get_Oid(int64_t){
         return INT8OID;
     }
 

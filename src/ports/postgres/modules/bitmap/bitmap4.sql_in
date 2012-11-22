@@ -100,8 +100,8 @@ CREATE AGGREGATE MADLIB_SCHEMA.bitmap4_agg
 )
 (
     SFUNC=MADLIB_SCHEMA.bitmap4_agg_sfunc,
-    STYPE=MADLIB_SCHEMA.bitmap4,
-    m4_ifdef(`__GREENPLUM__',`prefunc=MADLIB_SCHEMA.bitmap4_agg_pfunc')
+    STYPE=MADLIB_SCHEMA.bitmap4
+    m4_ifdef(`__GREENPLUM__',`,prefunc=MADLIB_SCHEMA.bitmap4_agg_pfunc')
 );
 
 
@@ -437,3 +437,6 @@ WITH FUNCTION MADLIB_SCHEMA.bitmap4_return_array(MADLIB_SCHEMA.bitmap4);
 
 CREATE CAST (INT8[] AS MADLIB_SCHEMA.bitmap4) 
 WITH FUNCTION MADLIB_SCHEMA.array_return_bitmap4(INT8[]);
+
+
+-- add cast to varbit
