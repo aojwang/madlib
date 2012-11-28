@@ -35,7 +35,8 @@ namespace bitmap {
  * @return the new bitmap after inserted.
  */
 template<typename T>
-Bitmap<T>& Bitmap<T>::insert_compositeword
+void
+Bitmap<T>::breakup_compword
 (
     T* newbitmap,
     int index,
@@ -43,8 +44,8 @@ Bitmap<T>& Bitmap<T>::insert_compositeword
     int word_pos,
     int num_words
 ){
-    //elog(NOTICE, "shift_bitmap: %d, %d, %d, %d", index, pos_in_word, word_pos, num_words);
     memmove(newbitmap, m_bitmap, (index + 1) * sizeof(T));
+    // the inserted position is in the middle of a composite word
     if (word_pos > 1 && word_pos < num_words){
         memcpy(newbitmap + index + 2,
                 m_bitmap + index, (m_size - index) * sizeof(T));
@@ -55,22 +56,113 @@ Bitmap<T>& Bitmap<T>::insert_compositeword
     }else{
         memmove(newbitmap + index + 1,
                 m_bitmap + index, (m_size - index) * sizeof(T));
+        // the inserted position is in the beginning of a composite word
         if (1 == word_pos){
             newbitmap[index + 1] = (T)(num_words - 1) | m_sw_zero_mask;
         }else{
+            // the inserted position is in the end of a composite word
             newbitmap[index] = (T)(num_words - 1) | m_sw_zero_mask;
             ++index;
         }
         newbitmap[0] += 1;
     }
 
-    // other bits will be erased
     newbitmap[index] = (T)1 << (pos_in_word - 1);
-
     m_bitmap = newbitmap;
     m_size = m_bitmap[0];
+}
 
-    return *this;
+
+template<typename T>
+void
+Bitmap<T>::insert_compword
+(
+    int64_t bit_pos,
+    int64_t num_words,
+    int index
+){
+    int pos_in_word = get_pos_word(bit_pos);
+
+    // if the composite word only contains 1 word and
+    // all of them are zero
+    if (1 == num_words){
+        m_bitmap[index] = (T)1 << (pos_in_word - 1);
+        return;
+    }
+
+    int64_t word_pos = BM_NUMWORDS_FOR_BITS(bit_pos);
+    T* newbitmap = m_bitmap;
+
+    // need to increase the memory size
+    if (((1 == word_pos || num_words == word_pos) && m_size == m_capacity) ||
+        (word_pos > 1 && word_pos < num_words && m_size >= m_capacity - 1)){
+            m_capacity += m_size_per_add;
+            newbitmap = alloc_bitmap(m_capacity);
+            m_bitmap_updated = true;
+    }
+
+    breakup_compword(newbitmap, index, pos_in_word, word_pos, num_words);
+}
+
+
+/**
+ * @brief insert the give number to the bitmap.
+ *
+ * @param bit_pos   the input number
+ *
+ * @return the new bitmap after inserted.
+ *
+ */
+template <typename T>
+inline
+void Bitmap<T>::append
+(
+    int64_t bit_pos
+){
+    int64_t need_elems = 1;
+    T max_bits = (T)BM_MAXBITS_IN_COMP;
+    int64_t num_words = BM_NUMWORDS_FOR_BITS(bit_pos);
+    int64_t cur_pos = get_pos_word(bit_pos);
+    int i = m_size;
+
+    if (num_words <= max_bits + 1){
+        // 1 composite word can represent all zeros,
+        // then 2 new elements are enough
+        need_elems = (1 == num_words) ? 1 : 2;
+    }else{
+        // we need 2 more composite words to represent all zeros
+        need_elems = (num_words - 1 + max_bits - 1) / max_bits + 1;
+        num_words = (num_words - 1) % max_bits + 1;
+    }
+
+    // allocate new memory
+    if (need_elems + m_size > m_capacity){
+        m_capacity += ((need_elems + m_size_per_add - 1 ) / m_size_per_add)
+                      * m_size_per_add;
+        m_bitmap = alloc_bitmap(m_capacity, m_bitmap, m_size);
+        m_bitmap_updated = true;
+    }
+
+    // fill the composite words
+    for (; need_elems > 2; --need_elems){
+        m_bitmap[i++] = m_sw_zero_mask | max_bits;
+        ++m_bitmap[0];
+    }
+
+    // the first word is composite word
+    // the second is a normal word
+    if ((2 == need_elems) && (num_words > 1)){
+        m_bitmap[i] = m_sw_zero_mask | (T)(num_words - 1);
+        m_bitmap[++i] = (T)1 << (cur_pos - 1);
+        m_bitmap[0] += 2;
+    }else{
+        // only one normal word can represent the input number
+        m_bitmap[i] = (T)1 << (cur_pos - 1);
+        m_bitmap[0] += 1;
+    }
+
+    // set the size of the bitmap
+    m_size = m_bitmap[0];
 }
 
 
@@ -100,93 +192,23 @@ Bitmap<T>& Bitmap<T>::insert
             // insert the input bit position to a normal word
             if (cur_pos >= bit_pos){
                 m_bitmap[i] |= (T)1 << ((get_pos_word(bit_pos)) - 1);
-                break;
+                return *this;
             }
         }else if (m_bitmap[i] < 0){
             // get the number of words for a composite word
             // each word contains m_base bits
-            num_words = m_bitmap[i] & m_wordcnt_mask;
-            cur_pos += num_words * m_base;
-
+            num_words = BM_NUMWORDS_IN_COMP(m_bitmap[i]);
+            int64_t temp = num_words * m_base;
+            cur_pos += temp;
             if (cur_pos >= bit_pos){
-                bit_pos -= (cur_pos - num_words * m_base);
-                int pos_in_word = get_pos_word(bit_pos);
-                int word_pos = get_num_words(bit_pos);
-
-                // if the active word only contains 1 word
-                if (1 == num_words){
-                    m_bitmap[i] = (T)1 << (pos_in_word - 1);
-                    break;
-                }
-
-                T* newbitmap = m_bitmap;
-                // need to increase the memory size
-                if (((1 == word_pos || num_words == word_pos) && m_size == m_capacity) ||
-                    (word_pos > 1 && word_pos < num_words && m_size >= m_capacity - 1)){
-                        m_capacity += m_size_per_add;
-                        newbitmap = new T[m_capacity];
-                        memset(newbitmap, 0x00, m_capacity * sizeof(T));
-                        m_bitmap_updated = true;
-                }
-
-                insert_compositeword(newbitmap, i, pos_in_word, word_pos, num_words);
-
-                break;
+                insert_compword(bit_pos - cur_pos - temp, num_words, i);
+                return *this;
             }
-        }else{
-            break;
         }
     }
 
-    // reach the end of the bitmap array
-    if (i == m_size || 1 == m_bitmap[0] || 0 == m_bitmap[i]){
-        int64_t need_elems = 1;
-        T max_bits = max_bits_in_cw();
-        bit_pos -= cur_pos;
-        cur_pos = get_pos_word(bit_pos);
-        num_words = get_num_words(bit_pos);
-        if (num_words <= max_bits + 1){
-            // 1 composite word can represent all zeros,
-            // then 2 new elements are enough
-            need_elems = (1 == num_words) ? 1 : 2;
-        }else{
-            // we need 2 more composite words to represent all zeros
-            need_elems = (num_words - 1 + max_bits - 1) / max_bits + 1;
-            num_words = (num_words - 1) % max_bits + 1;
-        }
-
-        // allocate new memory
-        if (need_elems + m_size > m_capacity){
-            m_capacity += ((need_elems + m_size_per_add - 1 ) / m_size_per_add)
-                          * m_size_per_add;
-            T* newbitmap = new T[m_capacity];
-            memset(newbitmap, 0x00, m_capacity * sizeof(T));
-            memcpy(newbitmap, m_bitmap, m_size * sizeof(T));
-            m_bitmap = newbitmap;
-            m_bitmap_updated = true;
-        }
-
-        // fill the composite words
-        for (; need_elems > 2; --need_elems){
-            m_bitmap[i++] = m_sw_zero_mask | max_bits;
-            ++m_bitmap[0];
-        }
-
-        // the first word is composite word
-        // the second is a normal word
-        if ((2 == need_elems) && (num_words > 1)){
-            m_bitmap[i++] = m_sw_zero_mask | (T)(num_words - 1);
-            m_bitmap[i] = (T)1 << (cur_pos - 1);
-            m_bitmap[0] += 2;
-        }else{
-            // only one normal word can represent the input number
-            m_bitmap[i] = (T)1 << (cur_pos - 1);
-            m_bitmap[0] += 1;
-        }
-
-        // set the size of the bitmap
-        m_size = m_bitmap[0];
-    }
+    // reach the end of the bitmap
+    append(bit_pos - cur_pos);
 
     return *this;
 }
@@ -204,43 +226,15 @@ inline
 ArrayHandle<T>
 Bitmap<T>::to_ArrayHandle
 (
-    bool use_capacity
+    bool use_capacity /* true */
 ){
-    int size = use_capacity ? m_capacity : m_size;
+    if (use_capacity || (m_size == m_capacity))
+        return m_bmArray;
 
-    Datum* result = new Datum[size];
-    for (int i = 0; i < size; ++i){
-        result[i] = get_Datum((T)m_bitmap[i]);
-    }
+    ArrayType* res = BM_CONSTRUCT_ARRAY((Datum*)NULL, m_size);
+    memcpy(BM_ARR_DATA_PTR(res, T), m_bitmap, m_size * sizeof(T));
 
-    return to_ArrayType(result, size);
-}
-
-
-/**
- * @brief the wrapper function for construct_array in arrayfuncs.c
- *
- * @param result    the array used to construct the ArrayType
- * @param size      the size of the input array
- *
- * @return the ArrayType representation for the input array.
- */
-template <typename T>
-inline
-ArrayType*
-Bitmap<T>::to_ArrayType
-(
-    Datum* result,
-    int size
-) const{
-    return construct_array(
-                result,
-                size,
-                m_typoid,
-                m_typlen,
-                m_typbyval,
-                m_typalign
-                );
+    return res;
 }
 
 
@@ -256,7 +250,7 @@ Bitmap<T>::to_ArrayType
  */
 template <typename T>
 inline
-ArrayHandle<T> Bitmap<T>::bitwise_proc
+ArrayType* Bitmap<T>::bitwise_proc
 (
     Bitmap<T>& rhs,
     bitwise_op op,
@@ -271,7 +265,7 @@ ArrayHandle<T> Bitmap<T>::bitwise_proc
     T temp;
     T pre_word = 0;
     int capacity = m_size + rhs.m_size;
-    Datum* result = new Datum[capacity];
+    T* result = new T[capacity];
 
     for (; i < m_size && j < rhs.m_size; ++k){
         // the two words have the same sign
@@ -318,9 +312,9 @@ ArrayHandle<T> Bitmap<T>::bitwise_proc
         if (k >= 2 && temp < 0 && pre_word < 0 &&
            (0 == ((pre_word ^ temp) & bit_test_mask))){
             pre_word += (temp & m_wordcnt_mask);
-            result[--k] = get_Datum(pre_word);
+            result[--k] = pre_word;
         }else{
-            result[k] = get_Datum(temp);
+            result[k] = temp;
             pre_word = temp;
         }
     }
@@ -337,9 +331,11 @@ ArrayHandle<T> Bitmap<T>::bitwise_proc
         std::logic_error
         ("the real size of the bitmap should be no greater than its capacity"));
 
-    result[0] = get_Datum((T)k);
+    result[0] = (T)k;
+    ArrayType* res_arr = BM_CONSTRUCT_ARRAY((Datum*)NULL, k);
+    memcpy(BM_ARR_DATA_PTR(res_arr, T), result, k * sizeof(T));
 
-    return to_ArrayType(result, k);
+    return res_arr;
 }
 
 
@@ -373,26 +369,19 @@ ArrayHandle<T> Bitmap<T>::operator & (Bitmap<T>& rhs){
 }
 
 
-/**
- * @brief get the positions of the non-zero bits. The position starts from 1.
- *
- * @return the array contains the positions
- *
- */
 template <typename T>
 inline
-ArrayHandle<T> Bitmap<T>::nonzero_positions(){
-    Datum* result = new Datum[nonzero_count()];
-    T j = 0;
-    T k = 1;
-    T begin_pos = 1;
+int64_t* Bitmap<T>::nonzero_positions(int64_t* result){
+    int64_t j = 0;
+    int64_t k = 1;
+    int64_t begin_pos = 1;
     for (int i = 1; i < m_size; ++i){
         k = begin_pos;
         T word = m_bitmap[i];
         if (word > 0){
             do{
                 if (1 == (word & 0x01))
-                    result[j++] = get_Datum(k);
+                    result[j++] = k;
                 word >>= 1;
                 ++k;
             }while (word > 0);
@@ -401,16 +390,91 @@ ArrayHandle<T> Bitmap<T>::nonzero_positions(){
             if ((word & (m_wordcnt_mask + 1)) > 0){
                 int n = (word & m_wordcnt_mask) * m_base;
                 for (; n > 0 ; --n){
-                    result[j++] = get_Datum(k++);
+                    result[j++] = k++;
                 }
             }
             begin_pos += (word & m_wordcnt_mask) * m_base;
         }
     }
 
-    return to_ArrayType(result, j);
+    return result;
 }
 
+/**
+ * @brief get the positions of the non-zero bits. The position starts from 1.
+ *
+ * @return the array contains the positions
+ *
+ */
+template <typename T>
+inline
+ArrayHandle<int64_t> Bitmap<T>::nonzero_positions(){
+    int64_t* result;
+    ArrayType* res_arr = alloc_array<int64_t>(result, nonzero_count());
+    nonzero_positions(result);
+
+    return res_arr;
+}
+
+
+/**
+ * @brief convert the bitmap to a readable format.
+ *        If more than 2 elements are continuous, then we use '~' to concat
+ *        the begin and the end of the continuous numbers. Otherwise, we will
+ *        use ',' to concat them.
+ *        e.g. assume the bitmap is '1,2,3,5,6,8,10,11,12,13'::bitmap, then
+ *        the output of to_string is '1~3,5,6,8,10~13'
+ *
+ * @return the readable string representation for the bitmap.
+ */
+template <typename T>
+inline
+char*
+Bitmap<T>::to_string(){
+    int64_t size = nonzero_count();
+    int64_t* result = new int64_t[size + 1];
+    char* res = (char*) palloc0(size * 26 * sizeof(char));
+    char* pstr = res;
+    nonzero_positions(result);
+    int j = 0;
+    int len = 0;
+    result[size] = -1;
+    ++size;
+    for (int i = 1; i < size; ++i){
+        if (result[i - 1] != result[i] - 1){
+            if (j == i - 1){
+                // j~j+1 is not continuous
+                len = int64_to_string(pstr, result[j]);
+                pstr += len;
+            }else if (j == i - 2){
+                // j ~ j + 1 is continuous, we use comma to separate them
+                len = int64_to_string(pstr, result[j]);
+                pstr += len;
+                *pstr++ = ',';
+                len = int64_to_string(pstr, result[j + 1]);
+                pstr += len;
+            }else{
+                // j ~ j + n is continuous, where n > 2
+                // in this case, we use ~ to ignore the middle elements
+                len = int64_to_string(pstr, result[j]);
+                pstr += len;
+                *pstr++ = '~';
+                len = int64_to_string(pstr, result[i - 1]);
+                pstr += len;
+            }
+            j = i;
+            *pstr++ = ',';
+        }
+    }
+
+    *--pstr = '\0';
+
+    if (0 == j){
+        int64_to_string(pstr, result[0]);
+    }
+
+    return res;
+}
 } // namespace bitmap
 } // namespace modules
 } // namespace madlib

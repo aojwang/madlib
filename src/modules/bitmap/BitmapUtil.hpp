@@ -13,9 +13,6 @@ namespace bitmap {
 using madlib::dbconnector::postgres::TypeTraits;
 using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
-#define INT64FORMAT  "%lld"
-#define MAXBITSOFINT32   10
-#define MAXBITSOFINT64   25
 /**
  * @brief This class encapsulate the interface for manipulate the bitmap
  *        All functions are static.
@@ -426,36 +423,8 @@ bitmap_out
 (
     AnyType &args
 ){
-    AnyType arg = args[0];
-    ArrayHandle<T> array = arg.getAs< ArrayHandle<T> >(true, false);
-    int size = array[0];
-    bool is_bit32 = sizeof(T) == sizeof(int32_t);
-    // we must use the palloc here rather than new operator
-    // otherwise, db will crash. NOTE: TODO need to investigate the reason
-    char *res = (char*)palloc0(size *
-            (is_bit32 ? (MAXBITSOFINT32 + 1) : (MAXBITSOFINT64 + 1)) *
-            sizeof(char));
-    //char *res = new char[size * (is_bit32 ? (MAXBITSOFINT32 + 1) : (MAXBITSOFINT64 + 1))];
-
-    char *res_begin = res;
-    char temp[MAXBITSOFINT64 + 1] = {'\0'};
-    char* temp2;
-
-    for (int i = 1; i < size; ++i){
-        temp2 = temp;
-        temp2 = is_bit32 ? int32_to_string(array[i], temp2) :
-                int64_to_string(array[i], temp2);
-
-        while (*temp2 != '\0'){
-            *res++ = *temp2++;
-        }
-        // replace the last '\0' to ','
-        *res++ = ',';
-    }
-
-    // remove the last comma
-    *(--res) = '\0';
-    return AnyType(res_begin);
+    Bitmap<T> bitmap(args[0].getAs< MutableArrayHandle<T> >(true, false), 0);
+    return AnyType(bitmap.to_string());
 }
 
 protected:
@@ -480,32 +449,6 @@ bitmap_cmp_internal
                         lhs[0] * sizeof(T)));
     return res ? EQ :
             lhs[0] > rhs[0] ? GT : LT;
-}
-
-
-static
-char*
-int32_to_string
-(
-    int32_t value,
-    char* result
-){
-    pg_ltoa(value, result);
-    return result;
-}
-
-static
-char*
-int64_to_string
-(
-    int64_t value,
-    char* result
-){
-    int len = 0;
-    if ((len = snprintf(result, MAXBITSOFINT64, INT64FORMAT, value)) < 0)
-        elog(ERROR, "could not format int8");
-    result[len] = '\0';
-    return result;
 }
 
 }; // class BitmapUtil
