@@ -48,6 +48,7 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
 // wrapper definition for ArrayType related functions
 #define BM_ARR_DATA_PTR(val, T) reinterpret_cast<T*>(ARR_DATA_PTR(val))
+#define BM_ARRAY_LENGTH(val) ArrayGetNItems(ARR_NDIM(val), ARR_DIMS(val))
 #define BM_CONSTRUCT_ARRAY(result, size) \
     construct_array( result, size, m_typoid, m_typlen, m_typbyval, m_typalign);
 #define BM_CONSTRUCT_ARRAY_TYPE(result, size, typoid, typlen, typbyval, typalign) \
@@ -97,10 +98,13 @@ class Bitmap{
 
 public:
     //ctor
-    Bitmap(int capacity, int size_per_add);
+    Bitmap(int capacity = 1, int size_per_add = 2);
 
     //ctor
-    Bitmap(ArrayHandle<T> handle, int size_per_add);
+    Bitmap(ArrayType* arr, Bitmap& rhs);
+
+    //ctor
+    Bitmap(ArrayHandle<T> handle, int size_per_add = 2);
 
     //ctor
     Bitmap(Bitmap& rhs);
@@ -120,6 +124,9 @@ public:
         return m_size == m_capacity;
     }
 
+    inline bool empty(){
+        return 1 == m_size;
+    }
     // for easily access a word in the bitmap array
     inline T& operator [] (size_t i){
         return m_bitmap[i];
@@ -128,14 +135,29 @@ public:
     // insert a bit to the bitmap
     inline Bitmap& insert(int64_t bit_pos);
 
-    // transform the bitmap to an ArrayHandle instance
-    inline ArrayHandle<T> to_ArrayHandle(bool use_capacity = true);
+    // transform the bitmap to an ArrayType* instance
+    inline ArrayType* to_ArrayType(bool use_capacity = true);
 
     // override the OR operation
-    inline ArrayHandle<T> operator | (Bitmap& rhs);
+    inline Bitmap operator | (Bitmap& rhs);
 
     // override the AND operation
-    inline ArrayHandle<T> operator & (Bitmap& rhs);
+    inline Bitmap operator & (Bitmap& rhs);
+
+    // the same with operator |, but with different return type
+    // to avoid the overhead of constructing bitmap object and ArrayHandle object,
+    // this function will return ArrayType*
+    inline ArrayType* op_or(Bitmap& rhs);
+
+    // the same with operator &, but with different return type
+    // to avoid the overhead of constructing bitmap object and ArrayHandle object,
+    // this function will return ArrayType*
+    inline ArrayType* op_and(Bitmap& rhs);
+
+    // override operator()
+    inline ArrayType* operator ()(bool use_capacity = true){
+        return to_ArrayType(use_capacity);
+    }
 
     // convert the bitmap to a readable format
     inline char* to_string();
@@ -143,14 +165,18 @@ public:
     // convert the bitmap to varbit
     inline VarBit* to_varbit();
 
-    // convert the input string to a bitmap
-    inline ArrayHandle<T> to_bitmap(char* str);
-
     // get the positions of the non-zero bits. The position starts from 1
-    inline ArrayHandle<int64_t> nonzero_positions();
+    inline ArrayType* nonzero_positions();
 
     // get an array containing the positions of the nonzero bits
-    inline int64_t* nonzero_positions(int64_t* result);
+    // the input parameter should not be null
+    inline int64_t nonzero_positions(int64_t* result);
+
+    // get an array containing the positions of the nonzero bits
+    // the function will allocate memory for holding the positions
+    // the size of the array is passed by reference, the returned value
+    // is the nonzero positions
+    inline int64_t* nonzero_positions(int64_t& size);
 
     // get the number of nonzero bits
     inline int64_t nonzero_count();

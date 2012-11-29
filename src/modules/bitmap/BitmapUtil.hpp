@@ -13,6 +13,29 @@ namespace bitmap {
 using madlib::dbconnector::postgres::TypeTraits;
 using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
+// convert the bitmap to AnyType
+#define ANYTYPE_FROM_BITMAP(val) AnyType(ArrayHandle<T>(val), InvalidOid)
+#define ANYTYPE_FROM_BITMAP_NULL(val) (NULL != (val) ? \
+            AnyType(ArrayHandle<T>(val), InvalidOid) : \
+            AnyType())
+//convert the array to AnyType
+#define ANYTYPE_FROM_ARRAY(val, T) AnyType(ArrayHandle<T>(val))
+
+// return AnyType from bitmap
+#define RETURN_ANYTYPE_FROM_BITMAP(val) \
+            return ANYTYPE_FROM_BITMAP(val)
+#define RETURN_ANYTYPE_FROM_BITMAP_NULL(val) \
+            ArrayType* res = val; \
+            return ANYTYPE_FROM_BITMAP_NULL(res)
+// return AnyType from bitmap
+#define RETURN_ANYTYPE_FROM_ARRAY(val, T) \
+            return ANYTYPE_FROM_ARRAY(val, T)
+
+// convert the bitmap to array in different cases
+#define MUTABLE_BITMAP(arg) arg.getAs< MutableArrayHandle<T> >(false, false)
+#define CLONE_BITMAP(arg) arg.getAs< MutableArrayHandle<T> >(false, true)
+#define IMMUTABLE_BITMAP(arg) arg.getAs< ArrayHandle<T> >(false, false)
+
 /**
  * @brief This class encapsulate the interfaces for manipulate the bitmap
  *        All functions are static.
@@ -56,14 +79,13 @@ bitmap_agg_sfunc
     if (state.isNull()){
         Bitmap<T> bitmap(size_per_add, size_per_add);
         bitmap.insert(input_bit);
-        return AnyType(bitmap.to_ArrayHandle(), InvalidOid);
+        return ANYTYPE_FROM_BITMAP(bitmap());
     }
     // state is not null
-    Bitmap<T> bitmap(state.getAs< MutableArrayHandle<T> >(false, false),
-            size_per_add);
+    Bitmap<T> bitmap(MUTABLE_BITMAP(state), size_per_add);
     bitmap.insert(input_bit);
-    return bitmap.updated() ? AnyType(bitmap.to_ArrayHandle(), InvalidOid) :
-            AnyType(state.getAs<ArrayHandle<T> >(false, false), InvalidOid);
+    return bitmap.updated() ? ANYTYPE_FROM_BITMAP(bitmap()) :
+                              ANYTYPE_FROM_BITMAP(IMMUTABLE_BITMAP(state));
 }
 
 
@@ -103,18 +125,18 @@ bitmap_agg_pfunc
     // trim the zero elements in the non-null bitmap
     if (nonull_index < 2){
         // no need to increase the bitmap size
-        Bitmap<T> bitmap(states[nonull_index].getAs< MutableArrayHandle<T> >(false, false), 0);
+        Bitmap<T> bitmap(MUTABLE_BITMAP(states[nonull_index]));
         if (bitmap.full()){
-            return AnyType(states[nonull_index].getAs<ArrayHandle<T> >(false, false), InvalidOid);
+            RETURN_ANYTYPE_FROM_BITMAP(IMMUTABLE_BITMAP(states[nonull_index]));
         }
-        return AnyType(bitmap.to_ArrayHandle(false), InvalidOid);
+        RETURN_ANYTYPE_FROM_BITMAP(bitmap(false));
     }
 
     // all the arguments are not null
     // the two state-arrays can be written without copying it
-    Bitmap<T> bitmap1(states[0].getAs< MutableArrayHandle<T> >(false, false), 0);
-    Bitmap<T> bitmap2(states[1].getAs< MutableArrayHandle<T> >(false, false), 0);
-    return AnyType(bitmap1 | bitmap2, InvalidOid);
+    Bitmap<T> bm1(MUTABLE_BITMAP(states[0]));
+    Bitmap<T> bm2(MUTABLE_BITMAP(states[1]));
+    RETURN_ANYTYPE_FROM_BITMAP(bm1.op_or(bm2));
 }
 
 
@@ -141,10 +163,9 @@ bitmap_and
 (
     AnyType &args
 ){
-    Bitmap<T> bitmap1(args[0].getAs< MutableArrayHandle<T> >(false), 0);
-    Bitmap<T> bitmap2(args[1].getAs< MutableArrayHandle<T> >(false), 0);
-
-    return AnyType(bitmap1 & bitmap2, InvalidOid);
+    Bitmap<T> bm1(CLONE_BITMAP(args[0]));
+    Bitmap<T> bm2(CLONE_BITMAP(args[1]));
+    RETURN_ANYTYPE_FROM_BITMAP_NULL(bm1.op_and(bm2));
 }
 
 
@@ -171,10 +192,9 @@ bitmap_or
 (
     AnyType &args
 ){
-    Bitmap<T> bitmap1(args[0].getAs< MutableArrayHandle<T> >(false), 0);
-    Bitmap<T> bitmap2(args[1].getAs< MutableArrayHandle<T> >(false), 0);
-
-    return AnyType(bitmap1 | bitmap2, InvalidOid);
+    Bitmap<T> bm1(CLONE_BITMAP(args[0]));
+    Bitmap<T> bm2(CLONE_BITMAP(args[1]));
+    RETURN_ANYTYPE_FROM_BITMAP_NULL(bm1.op_or(bm2));
 }
 
 
@@ -193,10 +213,7 @@ bitmap_nonzero_count
 (
     AnyType &args
 ){
-    // get the bitmap type as array
-    Bitmap<T> bitmap(args[0].getAs< ArrayHandle<T> >(false), 0);
-
-    return bitmap.nonzero_count();
+    return AnyType((Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).nonzero_count());
 }
 
 
@@ -216,10 +233,9 @@ bitmap_nonzero_positions
 (
     AnyType &args
 ){
-    // get the bitmap as array
-    Bitmap<T>bitmap(args[0].getAs< ArrayHandle<T> >(false), 0);
 
-    return bitmap.nonzero_positions();
+    RETURN_ANYTYPE_FROM_ARRAY(
+        (Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).nonzero_positions(), int64_t);
 }
 
 
@@ -242,6 +258,10 @@ array_return_bitmap
     ArrayHandle<int64_t> handle = args[0].getAs< ArrayHandle<int64_t> >();
     const int64_t* array = handle.ptr();
     int size = handle.size();
+
+    if (0 == size)
+        return AnyType();
+
     int bsize = (size >> 5) / 10;
     bsize = bsize < 2 ? 2 : bsize;
     Bitmap<T> bitmap(bsize, bsize);
@@ -250,7 +270,7 @@ array_return_bitmap
         bitmap.insert(array[i]);
     }
 
-    return AnyType(bitmap.to_ArrayHandle(false), InvalidOid);
+    RETURN_ANYTYPE_FROM_BITMAP(bitmap(false));
 }
 
 
@@ -268,8 +288,7 @@ bitmap_in
 (
     AnyType &args
 ){
-    return AnyType((Bitmap<T>(args[0].getAs<char*>())).to_ArrayHandle(false),
-            InvalidOid);
+    RETURN_ANYTYPE_FROM_BITMAP((Bitmap<T>(args[0].getAs<char*>()))(false));
 }
 
 
@@ -287,9 +306,7 @@ bitmap_out
 (
     AnyType &args
 ){
-    Bitmap<T> bitmap(args[0].getAs< ArrayHandle<T> >(false), 0);
-    char* res = bitmap.to_string();
-    return res ? AnyType(res) : AnyType();
+    return AnyType((Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).to_string());
 }
 
 
@@ -307,8 +324,7 @@ bitmap_return_varbit
 (
     AnyType &args
 ){
-    Bitmap<T> bitmap(args[0].getAs< ArrayHandle<T> >(false), 0);
-    return AnyType(bitmap.to_varbit());
+    return AnyType((Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).to_varbit());
 }
 
 
@@ -326,8 +342,8 @@ bitmap_return_array
 (
     AnyType &args
 ){
-    return AnyType(args[0].getAs<ArrayHandle<T> >(false),
-                (Oid)TypeTraits<ArrayHandle<T> >::oid);
+    return AnyType(IMMUTABLE_BITMAP(args[0]),
+            (Oid)TypeTraits<ArrayHandle<T> >::oid);
 }
 
 

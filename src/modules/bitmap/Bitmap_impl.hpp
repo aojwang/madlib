@@ -9,8 +9,8 @@ template <typename T>
 inline
 Bitmap<T>::Bitmap
 (
-    int capacity,
-    int size_per_add
+    int capacity /* = 1 */,
+    int size_per_add /* = 2 */
 ) :
     m_bmArray(NULL), m_bitmap(NULL), m_size(1), m_capacity(capacity),
     m_size_per_add(size_per_add), m_bitmap_updated(true),
@@ -24,13 +24,31 @@ Bitmap<T>::Bitmap
     m_bitmap[0] = 1;
 }
 
+// ctor
+template <typename T>
+inline
+Bitmap<T>::Bitmap
+(
+    ArrayType* arr,
+    Bitmap& rhs
+):
+    m_bmArray(arr), m_bitmap(BM_ARR_DATA_PTR(arr, T)),
+    m_size(BM_ARRAY_LENGTH(arr)), m_capacity(BM_ARRAY_LENGTH(arr)),
+    m_size_per_add(rhs.m_size_per_add), m_bitmap_updated(false),
+    m_base(rhs.m_base), m_wordcnt_mask(rhs.m_wordcnt_mask),
+    m_sw_zero_mask(rhs.m_sw_zero_mask), m_sw_one_mask(rhs.m_sw_one_mask),
+    m_typoid(rhs.m_typoid), m_typlen(rhs.m_typelen),
+    m_typbyval(rhs.m_typbyval), m_typalign(rhs.m_typalign){
+}
+
+
 //ctor
 template <typename T>
 inline
 Bitmap<T>::Bitmap
 (
     ArrayHandle<T> handle,
-    int size_per_add
+    int size_per_add /* = 2 */
 ) :
     m_bmArray(const_cast<ArrayType*>(handle.array())),
     m_bitmap(const_cast<T*>(handle.ptr())), m_size(handle[0]),
@@ -51,10 +69,10 @@ Bitmap<T>::Bitmap
 ):
     m_bmArray(rhs.m_bmArray), m_bitmap(rhs.m_bitmap), m_size(rhs.m_size),
     m_capacity(rhs.m_capacity), m_size_per_add(rhs.m_size_per_add),
-    m_bitmap_updated(rhs.m_bitmap_updated), m_base(sizeof(T) * 8 - 1),
-    m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
-    m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
-    m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)),
+    m_bitmap_updated(rhs.m_bitmap_updated), m_base(rhs.m_base),
+    m_wordcnt_mask(rhs.m_wordcnt_mask),
+    m_sw_zero_mask(rhs.m_sw_zero_mask),
+    m_sw_one_mask(rhs.m_sw_one_mask),
     m_typoid(rhs.m_typoid), m_typlen(rhs.m_typelen),
     m_typbyval(rhs.m_typbyval), m_typalign(rhs.m_typalign){
 }
@@ -329,8 +347,8 @@ Bitmap<T>::insert
  */
 template <typename T>
 inline
-ArrayHandle<T>
-Bitmap<T>::to_ArrayHandle
+ArrayType*
+Bitmap<T>::to_ArrayType
 (
     bool use_capacity /* true */
 ){
@@ -436,7 +454,7 @@ Bitmap<T>::bitwise_proc
 
     result[0] = (T)k;
 
-    return alloc_array(result, k);
+    return (1 == k) ? NULL : alloc_array(result, k);
 }
 
 
@@ -450,9 +468,11 @@ Bitmap<T>::bitwise_proc
  */
 template <typename T>
 inline
-ArrayHandle<T>
+Bitmap<T>
 Bitmap<T>::operator | (Bitmap<T>& rhs){
-    return bitwise_proc(rhs, &Bitmap<T>::bitwise_or, &Bitmap<T>::or_postproc);
+    ArrayType* res = bitwise_proc
+            (rhs, &Bitmap<T>::bitwise_or, &Bitmap<T>::or_postproc);
+    return res ? Bitmap(res, *this) : Bitmap();
 }
 
 
@@ -466,11 +486,43 @@ Bitmap<T>::operator | (Bitmap<T>& rhs){
  */
 template <typename T>
 inline
-ArrayHandle<T>
+Bitmap<T>
 Bitmap<T>::operator & (Bitmap<T>& rhs){
+    ArrayType* res = bitwise_proc
+            (rhs, &Bitmap<T>::bitwise_and, &Bitmap<T>::and_postproc);
+    return res ? Bitmap(res, *this) : Bitmap();
+}
+
+/**
+ * @brief implement the operator &
+ *
+ * @param rhs   the bitmap
+ *
+ * @return the result of "this" & "rhs"
+ *
+ */
+template <typename T>
+inline
+ArrayType*
+Bitmap<T>::op_and (Bitmap<T>& rhs){
     return bitwise_proc(rhs, &Bitmap<T>::bitwise_and, &Bitmap<T>::and_postproc);
 }
 
+
+/**
+ * @brief implement the operator |
+ *
+ * @param rhs   the bitmap
+ *
+ * @return the result of "this" | "rhs"
+ *
+ */
+template <typename T>
+inline
+ArrayType*
+Bitmap<T>::op_or (Bitmap<T>& rhs){
+    return bitwise_proc(rhs, &Bitmap<T>::bitwise_or, &Bitmap<T>::or_postproc);
+}
 
 /**
  * @brief get the number of nonzero bits
@@ -505,11 +557,10 @@ Bitmap<T>::nonzero_count(){
  */
 template <typename T>
 inline
-int64_t*
+int64_t
 Bitmap<T>::nonzero_positions(int64_t* result){
     madlib_assert(result != NULL,
             std::invalid_argument("the positions array must not be NULL"));
-
     int64_t j = 0;
     int64_t k = 1;
     int64_t begin_pos = 1;
@@ -535,9 +586,31 @@ Bitmap<T>::nonzero_positions(int64_t* result){
         }
     }
 
-    return result;
+    return j;
 }
 
+
+
+/**
+ * @brief get the positions of the non-zero bits. The position starts from 1.
+ *
+ * @param size    the size of the returned array
+ *
+ * @return the array containing the positions whose bits are 1.
+ */
+template <typename T>
+inline
+int64_t*
+Bitmap<T>::nonzero_positions(int64_t& size){
+    size = nonzero_count();
+    int64_t* result = NULL;
+    if (size > 0){
+        result = new int64_t[size];
+        nonzero_positions(result);
+    }
+
+    return result;
+}
 
 /**
  * @brief get the positions of the non-zero bits. The position starts from 1.
@@ -547,10 +620,11 @@ Bitmap<T>::nonzero_positions(int64_t* result){
  */
 template <typename T>
 inline
-ArrayHandle<int64_t>
+ArrayType*
 Bitmap<T>::nonzero_positions(){
-    int64_t* result;
-    ArrayType* res_arr = alloc_array<int64_t>(result, nonzero_count());
+    int64_t* result = NULL;
+    int size = nonzero_count();
+    ArrayType* res_arr = alloc_array<int64_t>(result, size);
     nonzero_positions(result);
 
     return res_arr;
@@ -572,17 +646,12 @@ inline
 char*
 Bitmap<T>::to_string(){
     int64_t size = nonzero_count();
-
-    // no elements in the bitmap
-    if (0 == size){
-        return NULL;
-    }
-
     int64_t* result = new int64_t[size + 1];
+    nonzero_positions(result);
+
     // here, we shouldn't align the size, don't use BM_ALIGN_ALLOC0
     char* res = (char*) BM_ALLOC0(size * MAXBITSOFINT64 * sizeof(char));
     char* pstr = res;
-    nonzero_positions(result);
     int j = 0;
     int len = 0;
     result[size] = -1;
@@ -633,14 +702,8 @@ template <typename T>
 inline
 VarBit*
 Bitmap<T>::to_varbit(){
-    int64_t size = nonzero_count();
-
-    if (0 == size){
-        return NULL;
-    }
-
-    int64_t* pos = new int64_t[size];
-    (void*) nonzero_positions(pos);
+    int64_t size = 0;
+    int64_t* pos = nonzero_positions(size);
 
     // get the varbit related information
     int64_t bitlen = pos[size - 1];

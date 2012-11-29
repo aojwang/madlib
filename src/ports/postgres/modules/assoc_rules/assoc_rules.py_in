@@ -339,7 +339,7 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
         plpy.execute("TRUNCATE TABLE assoc_loop_aux");
         plpy.execute("""
            INSERT INTO assoc_loop_aux(set_list, support, tids)
-           SELECT DISTINCT ON(set_list::INT[]) set_list,
+           SELECT DISTINCT ON(set_list::INT4[]) set_list,
                    {madlib_schema}.bitmap4_nonzero_count(tids)::FLOAT8 / {num_tranx},
                    tids
            FROM (
