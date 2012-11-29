@@ -5,8 +5,102 @@ namespace madlib {
 namespace modules {
 namespace bitmap {
 
+template <typename T>
+inline
+Bitmap<T>::Bitmap
+(
+    int capacity,
+    int size_per_add
+) :
+    m_bmArray(NULL), m_bitmap(NULL), m_size(1), m_capacity(capacity),
+    m_size_per_add(size_per_add), m_bitmap_updated(true),
+    m_base(sizeof(T) * 8 - 1),
+    m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
+    m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
+    m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)){
+    set_typInfo();
+    m_bmArray = BM_CONSTRUCT_ARRAY((Datum*)NULL, capacity);
+    m_bitmap = reinterpret_cast<T*>(ARR_DATA_PTR(m_bmArray));
+    m_bitmap[0] = 1;
+}
+
+//ctor
+template <typename T>
+inline
+Bitmap<T>::Bitmap
+(
+    ArrayHandle<T> handle,
+    int size_per_add
+) :
+    m_bmArray(const_cast<ArrayType*>(handle.array())),
+    m_bitmap(const_cast<T*>(handle.ptr())), m_size(handle[0]),
+    m_capacity(handle.size()), m_size_per_add(size_per_add),
+    m_bitmap_updated(false), m_base(sizeof(T) * 8 - 1),
+    m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
+    m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
+    m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)) {
+    set_typInfo();
+}
+
+//ctor
+template <typename T>
+inline
+Bitmap<T>::Bitmap
+(
+    Bitmap& rhs
+):
+    m_bmArray(rhs.m_bmArray), m_bitmap(rhs.m_bitmap), m_size(rhs.m_size),
+    m_capacity(rhs.m_capacity), m_size_per_add(rhs.m_size_per_add),
+    m_bitmap_updated(rhs.m_bitmap_updated), m_base(sizeof(T) * 8 - 1),
+    m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
+    m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
+    m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)),
+    m_typoid(rhs.m_typoid), m_typlen(rhs.m_typelen),
+    m_typbyval(rhs.m_typbyval), m_typalign(rhs.m_typalign){
+}
+
+//ctor
+template <typename T>
+inline
+Bitmap<T>::Bitmap
+(
+    char* str
+):
+    m_bmArray(NULL), m_bitmap(NULL), m_size(1), m_capacity(8),
+    m_size_per_add(8), m_bitmap_updated(false),
+    m_base(sizeof(T) * 8 - 1),
+    m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
+    m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
+    m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)){
+    // init the member variables
+    set_typInfo();
+    m_bmArray = BM_CONSTRUCT_ARRAY((Datum*)NULL, m_capacity);
+    m_bitmap = reinterpret_cast<T*>(ARR_DATA_PTR(m_bmArray));
+    m_bitmap[0] = 1;
+
+    // convert the input string to a bitmap
+    char elem[MAXBITSOFINT64] = {'\0'};
+    int j = 0;
+    int64 input_pos = 0;
+
+    for (; *str != '\0'; ++str){
+        if (',' == *str){
+            elem[j] = '\0';
+            (void) scanint8(elem, false, &input_pos);
+            insert(input_pos);
+            j = 0;
+        }else{
+            elem[j++] = *str;
+        }
+    }
+
+    (void) scanint8(elem, false, &input_pos);
+    insert(input_pos);
+}
+
+
 /**
- * @brief insert the input number to a composite word.
+ * @brief breakup the composite word, and insert the input number to it.
  *        three conditions need to be considered here (assume that the active
  *        word contains n normal words):
  *        + if the input number is inserted into the 1st word, then the active
@@ -27,12 +121,12 @@ namespace bitmap {
  *                      just move the elements)
  * @param index         the index of the active word will be used to insert the
  *                      input number
- * @param pos_in_word   the position in the inserted word for the input number
+ * @param pos_in_word   the inserting position for the input number
  * @param word_pos      the word for the input number will
  *                      be inserted to the new bitmap
- * @param num_words     the number of words in the active word
+ * @param num_words     the number of words in the composite word
  *
- * @return the new bitmap after inserted.
+ * @return the new bitmap.
  */
 template<typename T>
 void
@@ -73,6 +167,14 @@ Bitmap<T>::breakup_compword
 }
 
 
+/**
+ * @breif insert the specified bit to the composite word
+ *
+ * @param bit_pos       the position of the input bit
+ * @param num_words     the number of words in the composite word
+ * @param index         the subscript of bitmap array where the input
+ *                      bit will be inserted
+ */
 template<typename T>
 void
 Bitmap<T>::insert_compword
@@ -106,16 +208,17 @@ Bitmap<T>::insert_compword
 
 
 /**
- * @brief insert the give number to the bitmap.
+ * @brief append the given number to the bitmap.
  *
  * @param bit_pos   the input number
  *
- * @return the new bitmap after inserted.
+ * @return the new bitmap after appended.
  *
  */
 template <typename T>
 inline
-void Bitmap<T>::append
+void
+Bitmap<T>::append
 (
     int64_t bit_pos
 ){
@@ -126,8 +229,8 @@ void Bitmap<T>::append
     int i = m_size;
 
     if (num_words <= max_bits + 1){
-        // 1 composite word can represent all zeros,
-        // then 2 new elements are enough
+        // a composite word can represent all zeros,
+        // then two new elements are enough
         need_elems = (1 == num_words) ? 1 : 2;
     }else{
         // we need 2 more composite words to represent all zeros
@@ -135,7 +238,6 @@ void Bitmap<T>::append
         num_words = (num_words - 1) % max_bits + 1;
     }
 
-    // allocate new memory
     if (need_elems + m_size > m_capacity){
         m_capacity += ((need_elems + m_size_per_add - 1 ) / m_size_per_add)
                       * m_size_per_add;
@@ -176,10 +278,14 @@ void Bitmap<T>::append
  */
 template <typename T>
 inline
-Bitmap<T>& Bitmap<T>::insert
+Bitmap<T>&
+Bitmap<T>::insert
 (
     int64_t bit_pos
 ){
+    madlib_assert(bit_pos > 0,
+            std::invalid_argument("the bit position must be a positive number"));
+
     int64_t cur_pos = 0;
     int64_t num_words = 1;
     int i = 1;
@@ -231,10 +337,8 @@ Bitmap<T>::to_ArrayHandle
     if (use_capacity || (m_size == m_capacity))
         return m_bmArray;
 
-    ArrayType* res = BM_CONSTRUCT_ARRAY((Datum*)NULL, m_size);
-    memcpy(BM_ARR_DATA_PTR(res, T), m_bitmap, m_size * sizeof(T));
-
-    return res;
+    // do not change m_bitmap and m_bmArray
+    return alloc_array(m_bitmap, m_size);
 }
 
 
@@ -250,7 +354,8 @@ Bitmap<T>::to_ArrayHandle
  */
 template <typename T>
 inline
-ArrayType* Bitmap<T>::bitwise_proc
+ArrayType*
+Bitmap<T>::bitwise_proc
 (
     Bitmap<T>& rhs,
     bitwise_op op,
@@ -261,7 +366,6 @@ ArrayType* Bitmap<T>::bitwise_proc
     int k = 1;
     int num_words1 = 0;
     int num_words2 = 0;
-    T bit_test_mask = m_wordcnt_mask + 1;
     T temp;
     T pre_word = 0;
     int capacity = m_size + rhs.m_size;
@@ -273,8 +377,8 @@ ArrayType* Bitmap<T>::bitwise_proc
             temp = (this->*op)(m_bitmap[i], rhs.m_bitmap[j]);
             // the two words are active words
             if (m_bitmap[i] < 0){
-                num_words1 = m_bitmap[i] & m_wordcnt_mask;
-                num_words2 = rhs.m_bitmap[j] & m_wordcnt_mask;
+                num_words1 = BM_NUMWORDS_IN_COMP(m_bitmap[i]);
+                num_words2 = BM_NUMWORDS_IN_COMP(rhs.m_bitmap[j]);
 
                 // get the sign of the result
                 temp = temp & m_sw_one_mask;
@@ -297,21 +401,20 @@ ArrayType* Bitmap<T>::bitwise_proc
             if (m_bitmap[i] > 0){
                 temp = (this->*op)(m_bitmap[i], rhs.m_bitmap[j]);
                 rhs.m_bitmap[j] -= 1;
-                j += (rhs.m_bitmap[j] & m_wordcnt_mask) > 0 ? 0 : 1;
+                j += BM_NUMWORDS_IN_COMP(rhs.m_bitmap[j]) > 0 ? 0 : 1;
                 ++i;
             }else{
                 // "this" is a composite word and rhs is a normal word
                 temp = (this->*op)(rhs.m_bitmap[j], m_bitmap[i]);
                 m_bitmap[i] -= 1;
-                i += (m_bitmap[i] & m_wordcnt_mask) > 0 ? 0 : 1;
+                i += BM_NUMWORDS_IN_COMP(m_bitmap[i]) > 0 ? 0 : 1;
                 ++j;
             }
         }
 
         // merge if needed
-        if (k >= 2 && temp < 0 && pre_word < 0 &&
-           (0 == ((pre_word ^ temp) & bit_test_mask))){
-            pre_word += (temp & m_wordcnt_mask);
+        if (k >= 2 && BM_SAME_SIGN(temp, pre_word)){
+            pre_word += BM_NUMWORDS_IN_COMP(temp);
             result[--k] = pre_word;
         }else{
             result[k] = temp;
@@ -332,10 +435,8 @@ ArrayType* Bitmap<T>::bitwise_proc
         ("the real size of the bitmap should be no greater than its capacity"));
 
     result[0] = (T)k;
-    ArrayType* res_arr = BM_CONSTRUCT_ARRAY((Datum*)NULL, k);
-    memcpy(BM_ARR_DATA_PTR(res_arr, T), result, k * sizeof(T));
 
-    return res_arr;
+    return alloc_array(result, k);
 }
 
 
@@ -349,7 +450,8 @@ ArrayType* Bitmap<T>::bitwise_proc
  */
 template <typename T>
 inline
-ArrayHandle<T> Bitmap<T>::operator | (Bitmap<T>& rhs){
+ArrayHandle<T>
+Bitmap<T>::operator | (Bitmap<T>& rhs){
     return bitwise_proc(rhs, &Bitmap<T>::bitwise_or, &Bitmap<T>::or_postproc);
 }
 
@@ -364,14 +466,50 @@ ArrayHandle<T> Bitmap<T>::operator | (Bitmap<T>& rhs){
  */
 template <typename T>
 inline
-ArrayHandle<T> Bitmap<T>::operator & (Bitmap<T>& rhs){
+ArrayHandle<T>
+Bitmap<T>::operator & (Bitmap<T>& rhs){
     return bitwise_proc(rhs, &Bitmap<T>::bitwise_and, &Bitmap<T>::and_postproc);
 }
 
 
+/**
+ * @brief get the number of nonzero bits
+ *
+ * @return the nonzero count
+ */
 template <typename T>
 inline
-int64_t* Bitmap<T>::nonzero_positions(int64_t* result){
+int64_t
+Bitmap<T>::nonzero_count(){
+    int64_t   res = 0;
+    for (int i = 1; i < m_size; ++i){
+        if (m_bitmap[i] > 0){
+            res += get_nonzero_cnt(m_bitmap[i]);
+        }else{
+            // this is a composite word
+            res += (0 == (m_bitmap[i] & (m_wordcnt_mask + 1))) ?
+                    0 : (m_bitmap[i] & m_wordcnt_mask) * m_base;
+        }
+    }
+
+    return res;
+}
+
+
+/**
+ * @brief get the positions of the non-zero bits. The position starts from 1.
+ *
+ * @param result    the array used to keep the positions
+ *
+ * @return the array containing the positions whose bits are 1.
+ */
+template <typename T>
+inline
+int64_t*
+Bitmap<T>::nonzero_positions(int64_t* result){
+    madlib_assert(result != NULL,
+            std::invalid_argument("the positions array must not be NULL"));
+
     int64_t j = 0;
     int64_t k = 1;
     int64_t begin_pos = 1;
@@ -400,6 +538,7 @@ int64_t* Bitmap<T>::nonzero_positions(int64_t* result){
     return result;
 }
 
+
 /**
  * @brief get the positions of the non-zero bits. The position starts from 1.
  *
@@ -408,7 +547,8 @@ int64_t* Bitmap<T>::nonzero_positions(int64_t* result){
  */
 template <typename T>
 inline
-ArrayHandle<int64_t> Bitmap<T>::nonzero_positions(){
+ArrayHandle<int64_t>
+Bitmap<T>::nonzero_positions(){
     int64_t* result;
     ArrayType* res_arr = alloc_array<int64_t>(result, nonzero_count());
     nonzero_positions(result);
@@ -432,8 +572,15 @@ inline
 char*
 Bitmap<T>::to_string(){
     int64_t size = nonzero_count();
+
+    // no elements in the bitmap
+    if (0 == size){
+        return NULL;
+    }
+
     int64_t* result = new int64_t[size + 1];
-    char* res = (char*) palloc0(size * 26 * sizeof(char));
+    // here, we shouldn't align the size, don't use BM_ALIGN_ALLOC0
+    char* res = (char*) BM_ALLOC0(size * MAXBITSOFINT64 * sizeof(char));
     char* pstr = res;
     nonzero_positions(result);
     int j = 0;
@@ -475,6 +622,44 @@ Bitmap<T>::to_string(){
 
     return res;
 }
+
+
+/**
+ * @brief convert the bitmap to varbit
+ *
+ * @return the varbit representation for the bitmap
+ */
+template <typename T>
+inline
+VarBit*
+Bitmap<T>::to_varbit(){
+    int64_t size = nonzero_count();
+
+    if (0 == size){
+        return NULL;
+    }
+
+    int64_t* pos = new int64_t[size];
+    (void*) nonzero_positions(pos);
+
+    // get the varbit related information
+    int64_t bitlen = pos[size - 1];
+    int64_t len = VARBITTOTALLEN(bitlen);
+    VarBit* result = (VarBit*)BM_ALIGN_ALLOC0(len);
+    SET_VARSIZE(result, len);
+    VARBITLEN(result) = bitlen;
+    bits8* pres = VARBITS(result);
+
+    // set the varbit
+    for (int i = 0; i < size; ++i){
+        int64_t curindex = ((pos[i] + 7) >> 3) - 1;
+        int64_t curpos = (pos[i] & 0x07);
+        curpos = (0 == curpos) ? 0 : 8 - curpos;
+        *(pres + curindex) += ((bits8)1 << curpos);
+    }
+    return result;
+}
+
 } // namespace bitmap
 } // namespace modules
 } // namespace madlib

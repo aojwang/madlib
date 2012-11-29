@@ -14,7 +14,7 @@ using madlib::dbconnector::postgres::TypeTraits;
 using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
 /**
- * @brief This class encapsulate the interface for manipulate the bitmap
+ * @brief This class encapsulate the interfaces for manipulate the bitmap
  *        All functions are static.
  *
  */
@@ -36,11 +36,9 @@ public:
  * @note the bitmap(UDT) uses integer array as underlying implementation. To
  *       achieve good performance, we will not converting between bitmap and
  *       integer array. Thus, we need to skip the type checks of the C++ AL.
- *          + the input argument is bitmap, we will get it as array. However,
- *            the types of bitmap and array are not the same, we will explicit
- *            set the argument OID to array in function getUDTAs
- *          + the return is bitmap, we will return it as array. Therefore, we
- *            will explicit set the OID of return value to InvalidOid, so that
+ *          + the input argument is bitmap, we will get it as array.
+ *          + the return value is bitmap, we will return it as array. Therefore,
+ *            we will explicit set the OID of return value to InvalidOid, so that
  *            later the function getAsDatum will not check its type.
  *
  */
@@ -51,30 +49,21 @@ bitmap_agg_sfunc
 (
     AnyType &args
 ){
-    int64_t input_bit = args[1].getAs<int64_t>(true, false);
+    int64_t input_bit = args[1].getAs<int64_t>();
     int size_per_add = args[2].getAs<int32_t>();
-    Bitmap<T> bitmap;
-
-    // the first time of entering the step function,
-    // initialize the bitmap array
     AnyType state = args[0];
 
     if (state.isNull()){
-        bitmap.init(size_per_add);
-    }
-    else{
-        bitmap.init(state.getAs< MutableArrayHandle<T> >(true, false),
-                size_per_add);
-    }
-
-    bitmap.insert(input_bit);
-
-    if (bitmap.updated()){
+        Bitmap<T> bitmap(size_per_add, size_per_add);
+        bitmap.insert(input_bit);
         return AnyType(bitmap.to_ArrayHandle(), InvalidOid);
     }
-
-    // no new memory was reallocated to the state array
-    return AnyType(state.getAs<ArrayHandle<T> >(true), InvalidOid);
+    // state is not null
+    Bitmap<T> bitmap(state.getAs< MutableArrayHandle<T> >(false, false),
+            size_per_add);
+    bitmap.insert(input_bit);
+    return bitmap.updated() ? AnyType(bitmap.to_ArrayHandle(), InvalidOid) :
+            AnyType(state.getAs<ArrayHandle<T> >(false, false), InvalidOid);
 }
 
 
@@ -88,11 +77,9 @@ bitmap_agg_sfunc
  * @note the bitmap(UDT) uses integer array as underlying implementation. To
  *       achieve good performance, we will not converting between bitmap and
  *       integer array. Thus, we need to skip the type checks of the C++ AL.
- *          + the input argument is bitmap, we will get it as array. However,
- *            the types of bitmap and array are not the same, we will explicit
- *            set the argument OID to array in function getUDTAs
- *          + the return is bitmap, we will return it as array. Therefore, we
- *            will explicit set the OID of return value to InvalidOid, so that
+ *          + the input argument is bitmap, we will get it as array.
+ *          + the return value is bitmap, we will return it as array. Therefore,
+ *            we will explicit set the OID of return value to InvalidOid, so that
  *            later the function getAsDatum will not check its type.
  *
  */
@@ -116,17 +103,17 @@ bitmap_agg_pfunc
     // trim the zero elements in the non-null bitmap
     if (nonull_index < 2){
         // no need to increase the bitmap size
-        Bitmap<T> bitmap(states[nonull_index].getAs< MutableArrayHandle<T> >(true, false), 0);
+        Bitmap<T> bitmap(states[nonull_index].getAs< MutableArrayHandle<T> >(false, false), 0);
         if (bitmap.full()){
-            return AnyType(states[nonull_index].getAs<ArrayHandle<T> >(true), InvalidOid);
+            return AnyType(states[nonull_index].getAs<ArrayHandle<T> >(false, false), InvalidOid);
         }
         return AnyType(bitmap.to_ArrayHandle(false), InvalidOid);
     }
 
     // all the arguments are not null
     // the two state-arrays can be written without copying it
-    Bitmap<T> bitmap1(states[0].getAs< MutableArrayHandle<T> >(true, false), 0);
-    Bitmap<T> bitmap2(states[1].getAs< MutableArrayHandle<T> >(true, false), 0);
+    Bitmap<T> bitmap1(states[0].getAs< MutableArrayHandle<T> >(false, false), 0);
+    Bitmap<T> bitmap2(states[1].getAs< MutableArrayHandle<T> >(false, false), 0);
     return AnyType(bitmap1 | bitmap2, InvalidOid);
 }
 
@@ -141,11 +128,9 @@ bitmap_agg_pfunc
  * @note the bitmap(UDT) uses integer array as underlying implementation. To
  *       achieve good performance, we will not converting between bitmap and
  *       integer array. Thus, we need to skip the type checks of the C++ AL.
- *          + the input argument is bitmap, we will get it as array. However,
- *            the types of bitmap and array are not the same, we will explicit
- *            set the argument OID to array in function getUDTAs
- *          + the return is bitmap, we will return it as array. Therefore, we
- *            will explicit set the OID of return value to InvalidOid, so that
+ *          + the input argument is bitmap, we will get it as array.
+ *          + the return value is bitmap, we will return it as array. Therefore,
+ *            we will explicit set the OID of return value to InvalidOid, so that
  *            later the function getAsDatum will not check its type.
  *
  */
@@ -156,8 +141,8 @@ bitmap_and
 (
     AnyType &args
 ){
-    Bitmap<T> bitmap1(args[0].getAs< MutableArrayHandle<T> >(true), 0);
-    Bitmap<T> bitmap2(args[1].getAs< MutableArrayHandle<T> >(true), 0);
+    Bitmap<T> bitmap1(args[0].getAs< MutableArrayHandle<T> >(false), 0);
+    Bitmap<T> bitmap2(args[1].getAs< MutableArrayHandle<T> >(false), 0);
 
     return AnyType(bitmap1 & bitmap2, InvalidOid);
 }
@@ -173,11 +158,9 @@ bitmap_and
  * @note the bitmap(UDT) uses integer array as underlying implementation. To
  *       achieve good performance, we will not converting between bitmap and
  *       integer array. Thus, we need to skip the type checks of the C++ AL.
- *          + the input argument is bitmap, we will get it as array. However,
- *            the types of bitmap and array are not the same, we will explicit
- *            set the argument OID to array in function getUDTAs
- *          + the return is bitmap, we will return it as array. Therefore, we
- *            will explicit set the OID of return value to InvalidOid, so that
+ *          + the input argument is bitmap, we will get it as array.
+ *          + the return value is bitmap, we will return it as array. Therefore,
+ *            we will explicit set the OID of return value to InvalidOid, so that
  *            later the function getAsDatum will not check its type.
  *
  */
@@ -188,8 +171,8 @@ bitmap_or
 (
     AnyType &args
 ){
-    Bitmap<T> bitmap1(args[0].getAs< MutableArrayHandle<T> >(true), 0);
-    Bitmap<T> bitmap2(args[1].getAs< MutableArrayHandle<T> >(true), 0);
+    Bitmap<T> bitmap1(args[0].getAs< MutableArrayHandle<T> >(false), 0);
+    Bitmap<T> bitmap2(args[1].getAs< MutableArrayHandle<T> >(false), 0);
 
     return AnyType(bitmap1 | bitmap2, InvalidOid);
 }
@@ -211,7 +194,7 @@ bitmap_nonzero_count
     AnyType &args
 ){
     // get the bitmap type as array
-    Bitmap<T> bitmap(args[0].getAs< ArrayHandle<T> >(true, false), 0);
+    Bitmap<T> bitmap(args[0].getAs< ArrayHandle<T> >(false), 0);
 
     return bitmap.nonzero_count();
 }
@@ -234,11 +217,122 @@ bitmap_nonzero_positions
     AnyType &args
 ){
     // get the bitmap as array
-    Bitmap<T>bitmap(args[0].getAs< ArrayHandle<T> >(true, false), 0);
+    Bitmap<T>bitmap(args[0].getAs< ArrayHandle<T> >(false), 0);
 
     return bitmap.nonzero_positions();
 }
 
+
+/**
+ * @brief get the bitmap representation for the input array.
+ *
+ * @param args[0]   the input array.
+ *
+ * @return the bitmap for the input array.
+ * @note T is the type of the bitmap
+ *       the type of input array will be int64_t
+ */
+template <typename T>
+static
+AnyType
+array_return_bitmap
+(
+    AnyType &args
+){
+    ArrayHandle<int64_t> handle = args[0].getAs< ArrayHandle<int64_t> >();
+    const int64_t* array = handle.ptr();
+    int size = handle.size();
+    int bsize = (size >> 5) / 10;
+    bsize = bsize < 2 ? 2 : bsize;
+    Bitmap<T> bitmap(bsize, bsize);
+
+    for (int i = 0; i < size; ++i){
+        bitmap.insert(array[i]);
+    }
+
+    return AnyType(bitmap.to_ArrayHandle(false), InvalidOid);
+}
+
+
+/**
+ * @brief the in function for the bitmap data type
+ *
+ * @param args[0]   the input string, which should be split by a comma.
+ *
+ * @return the bitmap representing the input string
+ */
+template <typename T>
+static
+AnyType
+bitmap_in
+(
+    AnyType &args
+){
+    return AnyType((Bitmap<T>(args[0].getAs<char*>())).to_ArrayHandle(false),
+            InvalidOid);
+}
+
+
+/**
+ * @brief the out function for the bitmap data type.
+ *
+ * @param args[0]   the bitmap
+ *
+ * @return the string representing the bitmap.
+ */
+template <typename T>
+static
+AnyType
+bitmap_out
+(
+    AnyType &args
+){
+    Bitmap<T> bitmap(args[0].getAs< ArrayHandle<T> >(false), 0);
+    char* res = bitmap.to_string();
+    return res ? AnyType(res) : AnyType();
+}
+
+
+/**
+ * @brief convert the bitmap to varbit.
+ *
+ * @param args[0]   the bitmap
+ *
+ * @return the varbit representation for the bitmap.
+ */
+template <typename T>
+static
+AnyType
+bitmap_return_varbit
+(
+    AnyType &args
+){
+    Bitmap<T> bitmap(args[0].getAs< ArrayHandle<T> >(false), 0);
+    return AnyType(bitmap.to_varbit());
+}
+
+
+/**
+ * @brief convert the bitmap to array.
+ *
+ * @param args[0]   the bitmap
+ *
+ * @return the array representation for the bitmap.
+ */
+template <typename T>
+static
+AnyType
+bitmap_return_array
+(
+    AnyType &args
+){
+    return AnyType(args[0].getAs<ArrayHandle<T> >(false),
+                (Oid)TypeTraits<ArrayHandle<T> >::oid);
+}
+
+
+public:
+// comparators
 
 /**
  * @brief the greater than (>) and less than (<) operators implementation
@@ -340,93 +434,6 @@ bitmap_cmp
     return static_cast<int32_t>(bitmap_cmp_internal<T>(args));
 }
 
-
-/**
- * @brief get the bitmap representation for the input array.
- *
- * @param args[0]   the input array.
- *
- * @return the bitmap for the input array.
- * @note T is the type of the bitmap
- *       the type of input array will be int64_t
- */
-template <typename T>
-static
-AnyType
-array_return_bitmap
-(
-    AnyType &args
-){
-    ArrayHandle<int64_t> handle = args[0].getAs< ArrayHandle<int64_t> >();
-    const int64_t* array = handle.ptr();
-    int size = handle.size();
-    int bsize = (size >> 5) / 10;
-    bsize = bsize < 2 ? 2 : bsize;
-    Bitmap<T> bitmap(bsize, bsize);
-
-    for (int i = 0; i < size; ++i){
-        bitmap.insert(array[i]);
-    }
-
-    return AnyType(bitmap.to_ArrayHandle(false), InvalidOid);
-}
-
-
-/**
- * @brief the in function for the bitmap data type
- *
- * @param args[0]   the input string, which should be split by a comma.
- *
- * @return the bitmap representing the input string
- */
-template <typename T>
-static
-AnyType
-bitmap_in
-(
-    AnyType &args
-){
-    char* input = args[0].getAs<char*>();
-    Bitmap<T> bitmap(32, 32);
-    char elem[24] = {'\0'};
-    int j = 0;
-    int64 input_pos = 0;
-
-    for (; *input != '\0'; ++input){
-        if (',' == *input){
-            elem[j] = '\0';
-            (void) scanint8(elem, false, &input_pos);
-            bitmap.insert(input_pos);
-            j = 0;
-        }else{
-            elem[j++] = *input;
-        }
-    }
-    (void) scanint8(elem, false, &input_pos);
-    bitmap.insert(input_pos);
-
-    return AnyType(bitmap.to_ArrayHandle(), InvalidOid);
-}
-
-
-/**
- * @brief the out function for the bitmap data type.
- *
- * @param args[0]   the bitmap
- *
- * @return the string representing the bitmap.
- */
-template <typename T>
-static
-AnyType
-bitmap_out
-(
-    AnyType &args
-){
-    Bitmap<T> bitmap(args[0].getAs< MutableArrayHandle<T> >(true, false), 0);
-    return AnyType(bitmap.to_string());
-}
-
 protected:
 template <typename T>
 static
@@ -442,8 +449,8 @@ bitmap_cmp_internal
     if (!args[0].isNull() && args[1].isNull())
         return GT;
 
-    const T* lhs = (args[0].getAs< ArrayHandle<T> >(true, false)).ptr();
-    const T* rhs = (args[1].getAs< ArrayHandle<T> >(true, false)).ptr();
+    const T* lhs = (args[0].getAs< ArrayHandle<T> >(false)).ptr();
+    const T* rhs = (args[1].getAs< ArrayHandle<T> >(false)).ptr();
 
     bool res = (0 == memcmp((const void*)lhs, (const void*)rhs,
                         lhs[0] * sizeof(T)));

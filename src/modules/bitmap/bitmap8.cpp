@@ -86,8 +86,7 @@ bitmap8_out::run(AnyType &args){
  */
 AnyType
 bitmap8_return_array::run(AnyType &args){
-    return AnyType(args[0].getAs<ArrayHandle<int64_t> >(true),
-            (Oid)(TypeTraits<ArrayHandle<int64_t> >::oid));
+    return BitmapUtil::bitmap_return_array<int64_t>(args);;
 }
 
 
@@ -99,6 +98,13 @@ array_return_bitmap8::run(AnyType &args){
     return BitmapUtil::array_return_bitmap<int64_t>(args);
 }
 
+/**
+ * @brief get the varbit representation for the bitmap
+ */
+AnyType
+bitmap8_return_varbit::run(AnyType &args){
+    return BitmapUtil::bitmap_return_varbit<int64_t>(args);
+}
 
 /**
  * @brief the implementation of = operator

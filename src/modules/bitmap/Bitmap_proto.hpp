@@ -17,15 +17,34 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 #define BM_MASK(c, T) (((T)-1) / (BM_POW(BM_POW(c, T), T) + 1))
 #define BM_ROUND(n, c, T) (((n) & BM_MASK(c, T)) + ((n) >> BM_POW(c, T) & BM_MASK(c, T)))
 
+// align the 'val' with 'align' length
 #define BM_ALIGN(val, align) (((val) + (align) - 1) / (align)) * (align)
+
+// does the composite word represent continuous 1
+#define BM_COMPWORD_ONE(val) (((val) & (m_wordcnt_mask + 1)) > 0)
+
+// the two composite words are the same sign?
+#define BM_SAME_SIGN(lhs, rhs) (((lhs) < 0) && ((rhs) < 0) && \
+                               (0 == (((lhs) ^ (rhs)) & (m_wordcnt_mask + 1))))
+
 // get the number of words for representing the input number
 #define BM_NUMWORDS_FOR_BITS(val) (((val) + m_base - 1) / m_base)
+
 // get the number of words in the composite word
 #define BM_NUMWORDS_IN_COMP(val) ((val) & m_wordcnt_mask)
+
 // get the maximum 0s or 1s can be represented by a composite word
 // for bitmap4, its 0x3F FF FF FF.
 #define BM_MAXBITS_IN_COMP ((int64_t)1 << (m_base - 1)) - 1
 
+// the wrapper for palloc0, this function will not align the 'size'
+#define BM_ALLOC0(size) palloc0(size)
+
+// the madlib allocation function will align the 'size' to 16
+#define BM_ALIGN_ALLOC0(size) madlib::defaultAllocator().allocate<\
+        madlib::dbal::FunctionContext, \
+        madlib::dbal::DoZero, \
+        madlib::dbal::ThrowBadAlloc>(size)
 
 // wrapper definition for ArrayType related functions
 #define BM_ARR_DATA_PTR(val, T) reinterpret_cast<T*>(ARR_DATA_PTR(val))
@@ -38,18 +57,22 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 /**
  * the class for building and manipulating the bitmap.
  * Here, we use an array to represent the bitmap. The first element of the array
- * keeps the real size of the bitmap. An element in the array is
- * called a word whose size is equal to sizeof(T). There are two type of words:
- * normal word and composite word. The difference between them is the highest bit.
- * 0 for normal word and 1 for composite word. Therefore, the value of a normal
- * word is greater than zero and that of a composite word is less than 0. One thing
- * should be noted is that 0 is empty word.
- *
+ * keeps the real size of the bitmap. The reasons are that 1) in the bitmap_agg
+ * step function, the capacity is always greater than the real size of the bitmap,
+ * therefore, it would be better if we can get the real size of the bitmap quickly
+ * rather than traverse the bitmap to get the real size; 2) one addition element
+ * is small compared to the whole bitmap. An element in the array except the
+ * first one is called a word whose size is equal to sizeof(T).
+ * There are two type of words: normal word and composite word. The difference
+ * between them is the highest bit. 0 for normal word and 1 for composite word.
+ * Therefore, the value of a normal word is greater than zero and that of a
+ * composite word is less than 0.
+
  * the bitmap array can be dynamically reallocated. If the real size of the
- * bitmap is equal to the capacity of the bitmap, then we will reallocate and
- * copy the old bitmap elements to the new bitmap. And we define a parameter
- * "size_per_add" to indicate the number of empty elements will be added to
- * the bitmap.
+ * bitmap is equal to the capacity of the bitmap and we insert a bit to it,
+ * then we will reallocate and copy the old bitmap elements to the new bitmap.
+ * And we define a parameter "size_per_add" to indicate the number of empty
+ * elements will be added to the bitmap.
  *
  * For example:
  *     bitmap[] = {4, 16, 0x80000003, 0xC0000002, 0, 0, 0, 0};
@@ -68,89 +91,31 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
  */
 template <typename T>
 class Bitmap{
-    // function pointers
+    // function pointers for bitwise operation
     typedef T (Bitmap<T>::*bitwise_op)(T, T);
     typedef int (Bitmap<T>::*bitwise_postproc)(T*, int, T*, int, int, T);
 
 public:
     //ctor
-    Bitmap() :
-        m_bmArray(NULL), m_bitmap(NULL), m_size(0), m_capacity(0),
-        m_size_per_add(0), m_bitmap_updated(false),
-        m_base(sizeof(T) * 8 - 1),
-        m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
-        m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
-        m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)){
-        set_typInfo();
-    }
+    Bitmap(int capacity, int size_per_add);
 
     //ctor
-    Bitmap(int capacity, int size_per_add) :
-        m_bmArray(NULL), m_bitmap(NULL), m_size(1), m_capacity(capacity),
-        m_size_per_add(size_per_add), m_bitmap_updated(false),
-        m_base(sizeof(T) * 8 - 1),
-        m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
-        m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
-        m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)){
-        set_typInfo();
-        m_bmArray = BM_CONSTRUCT_ARRAY((Datum*)NULL, capacity);
-        m_bitmap = reinterpret_cast<T*>(ARR_DATA_PTR(m_bmArray));
-        m_bitmap[0] = 1;
-
-    }
+    Bitmap(ArrayHandle<T> handle, int size_per_add);
 
     //ctor
-    Bitmap(ArrayHandle<T> handle, int size_per_add) :
-        m_bmArray(const_cast<ArrayType*>(handle.array())),
-        m_bitmap(const_cast<T*>(handle.ptr())), m_size(handle[0]),
-        m_capacity(handle.size()), m_size_per_add(size_per_add),
-        m_bitmap_updated(false), m_base(sizeof(T) * 8 - 1),
-        m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
-        m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
-        m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)) {
-        set_typInfo();
-    }
+    Bitmap(Bitmap& rhs);
 
-    //ctor
-    Bitmap(Bitmap& rhs):
-        m_bmArray(rhs.m_bmArray), m_bitmap(rhs.m_bitmap), m_size(rhs.m_size),
-        m_capacity(rhs.m_capacity), m_size_per_add(rhs.m_size_per_add),
-        m_bitmap_updated(rhs.m_bitmap_updated), m_base(sizeof(T) * 8 - 1),
-        m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
-        m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
-        m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)),
-        m_typoid(rhs.m_typoid), m_typlen(rhs.m_typelen),
-        m_typbyval(rhs.m_typbyval), m_typalign(rhs.m_typalign){
-    }
-
-    // initialize the member variables. constant variables and type related
-    // information will be initialized in the constructor
-    inline void init(MutableArrayHandle<T> handle, int size_per_add){
-        m_bmArray = handle.array();
-        m_bitmap = handle.ptr();
-        m_size = handle[0];
-        m_capacity = handle.size();
-        m_size_per_add = size_per_add;
-        m_bitmap_updated = false;
-    }
-
-    // allocate memory for the bitmap array and initialize the member variables
-    inline void init(int size_per_add){
-        m_size = 1;
-        m_capacity = size_per_add;
-        m_size_per_add = size_per_add;
-        m_bmArray = BM_CONSTRUCT_ARRAY((Datum*)NULL, m_capacity);
-        m_bitmap = reinterpret_cast<T*>(ARR_DATA_PTR(m_bmArray));
-        m_bitmap[0] = 1;
-        m_bitmap_updated = true;
-    }
+    // construct a bitmap for the input string
+    // the format of input string looks like "1,3,19,20".
+    // we use comma to split the numbers
+    Bitmap(char* rhs);
 
     // if the bitmap array was reallocated, the flag will be set to true
     inline bool updated(){
         return m_bitmap_updated;
     }
 
-    // is the bitmap array was full
+    // is the bitmap array full
     inline bool full(){
         return m_size == m_capacity;
     }
@@ -172,29 +137,38 @@ public:
     // override the AND operation
     inline ArrayHandle<T> operator & (Bitmap& rhs);
 
+    // convert the bitmap to a readable format
     inline char* to_string();
+
+    // convert the bitmap to varbit
+    inline VarBit* to_varbit();
+
+    // convert the input string to a bitmap
+    inline ArrayHandle<T> to_bitmap(char* str);
 
     // get the positions of the non-zero bits. The position starts from 1
     inline ArrayHandle<int64_t> nonzero_positions();
 
+    // get an array containing the positions of the nonzero bits
     inline int64_t* nonzero_positions(int64_t* result);
 
-    inline int64_t nonzero_count(){
-        int64_t   res = 0;
-        for (int i = 1; i < m_size; ++i){
-            if (m_bitmap[i] > 0){
-                res += get_nonzero_cnt(m_bitmap[i]);
-            }else{
-                // this is a composite word
-                res += (0 == (m_bitmap[i] & (m_wordcnt_mask + 1))) ?
-                        0 : (m_bitmap[i] & m_wordcnt_mask) * m_base;
-            }
-        }
-
-        return res;
-    }
+    // get the number of nonzero bits
+    inline int64_t nonzero_count();
 
 protected:
+    // breakup composite word, and insert the specified bit
+    inline void breakup_compword (T* newbitmap, int index,
+            int pos_in_word, int word_pos, int num_words);
+
+    // insert a bit 1 to the composite word
+    inline void insert_compword(int64_t bit_pos, int64_t num_words, int index);
+
+    // append a bit 1 to the bitmap
+    inline void append( int64_t bit_pos);
+
+    // allocate a new array with ArrayType encapsulated
+    // X is the type of the array, we need to search the type
+    // related information from cache.
     template <typename X>
     inline ArrayType* alloc_array(X*& res, int size){
         Oid typoid = get_Oid((X)0);
@@ -212,12 +186,14 @@ protected:
         return arr;
     }
 
-    // allocate a new array with ArrayType encapsulated
-    template <typename X>
-    inline ArrayType* alloc_array(X** res, int newsize, X* oldres, int oldsize){
-        ArrayType* arr = alloc_array(res, newsize);
-        memcpy(*res, oldres, oldsize * sizeof(X));
-        return arr;
+    // allocate an array to keep the elements in 'oldarr'
+    // the number of those elements is 'size'. The type of
+    // the array is T.
+    inline ArrayType* alloc_array(T* oldarr, int size){
+        ArrayType* res = BM_CONSTRUCT_ARRAY((Datum*)NULL, size);
+        memcpy(BM_ARR_DATA_PTR(res, T), oldarr, size * sizeof(T));
+
+        return res;
     }
 
     // allocate a new bitmap, all elements are zeros
@@ -259,7 +235,7 @@ protected:
         return static_cast<T>(res);
     }
 
-    // get the position in the bitmap for the input number.
+    // get the inserting position for the input number.
     // The result is in range of [1, m_base]
     inline int get_pos_word(int64_t bit_pos){
         int pos = bit_pos % m_base;
@@ -293,16 +269,6 @@ protected:
             (m_typoid, &m_typlen, &m_typbyval, &m_typalign);
     }
 
-    // breakup composite word, and insert the specified bit
-    inline void breakup_compword (T* newbitmap, int index,
-            int pos_in_word, int word_pos, int num_words);
-
-    // insert a bit 1 to the composite word
-    inline void insert_compword(int64_t bit_pos, int64_t num_words, int index);
-
-    // append a bit 1 to the bitmap
-    inline void append( int64_t bit_pos);
-
     // the entry function for doing the bitwise operations,
     // such as | and &, etc.
     ArrayType* bitwise_proc(Bitmap<T>& rhs, bitwise_op op,
@@ -311,8 +277,8 @@ protected:
     // lhs should not be a composite word
     inline T bitwise_or(T lhs, T rhs){
         T res = rhs > 0 ? lhs | rhs :
-                   (rhs & (m_wordcnt_mask + 1)) > 0 ?
-                       m_sw_one_mask | 1 : lhs;
+                        BM_COMPWORD_ONE(rhs) ?
+                        m_sw_one_mask | 1 : lhs;
         // if all the bits of the result are 1, then use a composite word
         // to represent it
         return res == (~m_sw_zero_mask) ? m_sw_one_mask | 1 : res;
@@ -320,9 +286,9 @@ protected:
 
     // lhs should not be a composite word
     inline T bitwise_and(T lhs, T rhs){
-        T res =  rhs > 0 ? lhs & rhs :
-                   (rhs & (m_wordcnt_mask + 1)) > 0 ?
-                       lhs : m_sw_zero_mask | 1;
+        T res = rhs > 0 ? lhs & rhs :
+                        BM_COMPWORD_ONE(rhs) ?
+                        lhs : m_sw_zero_mask | 1;
         // if all the bits of the result are 0, then use a composite word
         // to represent it
         return (0 == res) ? (m_sw_zero_mask | 1) : res;
@@ -337,9 +303,8 @@ protected:
             T temp = (bitmap[i] < 0) ? bitmap[i] :
                         ((bitmap[i] == (~m_sw_zero_mask)) ?
                         (m_sw_one_mask | 1) : bitmap[i]);
-            if (k >= 2 && pre_word < 0 && temp < 0 &&
-                (0 == ((pre_word ^ temp) & (m_wordcnt_mask + 1)))){
-                pre_word += (temp & m_wordcnt_mask);
+            if (k >= 2 && BM_SAME_SIGN(temp, pre_word)){
+                pre_word += BM_NUMWORDS_IN_COMP(temp);
                 result[--k] = pre_word;
             }else{
                 result[k] = bitmap[i];
@@ -348,7 +313,6 @@ protected:
         }
 
         return k;
-
     }
 
     // the post-processing for the AND operation. Here, we need do nothing.
@@ -356,16 +320,13 @@ protected:
         return k;
     }
 
-    int
-    int64_to_string
-    (
-        char* result,
-        int64_t value
-    ){
+    // convert int64 number to a string
+    int int64_to_string (char* result, int64_t value){
         int len = 0;
         if ((len = snprintf(result, MAXBITSOFINT64, INT64FORMAT, value)) < 0)
-            elog(ERROR, "could not format int8");
+            throw std::invalid_argument("the input value is not int8 number");
         result[len] = '\0';
+
         return len;
     }
 

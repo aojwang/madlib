@@ -178,7 +178,7 @@ AnyType::consistencyCheck() const {
 template <typename T>
 inline
 T
-AnyType::getAs(bool noTypeCheck /*false*/, bool isClone /*true*/) const {
+AnyType::getAs(bool isCheckType /*true*/, bool isCloneMutable /*true*/) const {
     consistencyCheck();
 
     if (isNull())
@@ -190,7 +190,7 @@ AnyType::getAs(bool noTypeCheck /*false*/, bool isClone /*true*/) const {
             "Composite type where not expected.");
 
     // Verify type OID
-    if (!noTypeCheck && TypeTraits<T>::oid != InvalidOid && mTypeID != TypeTraits<T>::oid) {
+    if (isCheckType && TypeTraits<T>::oid != InvalidOid && mTypeID != TypeTraits<T>::oid) {
         std::stringstream errorMsg;
         errorMsg << "Invalid type conversion. Expected type ID "
             << TypeTraits<T>::oid;
@@ -207,7 +207,7 @@ AnyType::getAs(bool noTypeCheck /*false*/, bool isClone /*true*/) const {
     }
 
     // Verify type name
-    if (!noTypeCheck && TypeTraits<T>::typeName() &&
+    if (isCheckType && TypeTraits<T>::typeName() &&
         std::strncmp(mTypeName, TypeTraits<T>::typeName(), NAMEDATALEN)) {
 
         std::stringstream errorMsg;
@@ -218,7 +218,7 @@ AnyType::getAs(bool noTypeCheck /*false*/, bool isClone /*true*/) const {
     }
 
     if (mContent.empty()) {
-        bool needMutableClone = (TypeTraits<T>::isMutable && !mIsMutable) && isClone;
+        bool needMutableClone = TypeTraits<T>::isMutable && isCloneMutable && (!mIsMutable);
         return TypeTraits<T>::toCXXType(mDatum, needMutableClone, mSysInfo);
     } else {
         // any_cast<T*> will not throw but return a NULL pointer if of

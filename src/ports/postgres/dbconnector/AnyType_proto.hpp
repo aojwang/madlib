@@ -45,7 +45,7 @@ public:
     AnyType(const T& inValue, Oid _oid,
              bool inForceLazyConversionToDatum = false);
 
-    template <typename T> T getAs(bool noTypeCheck = false, bool isClone = true) const;
+    template <typename T> T getAs(bool isCheckType = true, bool isCloneMutable = true) const;
 
     AnyType operator[](uint16_t inID) const;
     uint16_t numFields() const;

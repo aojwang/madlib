@@ -249,6 +249,19 @@ struct TypeTraits<char*> {
 
 
 template <>
+struct TypeTraits<VarBit*> {
+    typedef VarBit* value_type;
+
+    WITH_OID( VARBITOID );
+    WITH_TYPE_CLASS( dbal::SimpleType );
+    WITH_MUTABILITY( dbal::Immutable );
+    WITH_DEFAULT_EXTENDED_TRAITS;
+    WITH_TO_PG_CONVERSION(VarBitPGetDatum(value));
+    WITH_TO_CXX_CONVERSION(DatumGetVarBitP(value));
+};
+
+
+template <>
 struct TypeTraits<ByteString> : public TypeTraitsBase<ByteString> {
     enum { alignment = MAXIMUM_ALIGNOF };
     WITH_TYPE_NAME("bytea8");

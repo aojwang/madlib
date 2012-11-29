@@ -3,9 +3,6 @@
  * @file bitmap.sql_in
  *
  * @brief The \ref
-
- * @date June 2011
- * @modified August 2012
  *
  * @sa 
  *
@@ -184,7 +181,7 @@ IMMUTABLE;
  *
  * @param args[0]   the bitmap
  *
- * @return the array representing the bitmap.
+ * @return the array representation for the bitmap.
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_return_array
 (
@@ -200,7 +197,7 @@ LANGUAGE C IMMUTABLE STRICT;
  *
  * @param args[0]   the input array
  *
- * @return the bitmap representing the array.
+ * @return the bitmap representation for the array.
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.array_return_bitmap8
 (
@@ -210,6 +207,21 @@ RETURNS MADLIB_SCHEMA.bitmap8
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
+
+/*
+ * @brief get the varbit representation for the bitmap
+ *
+ * @param args[0]   the bitmap
+ *
+ * @return the varbit representation for the bitmap.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap8_return_varbit
+(
+    MADLIB_SCHEMA.bitmap8
+)
+RETURNS VARBIT
+AS 'MODULE_PATHNAME'
+LANGUAGE C IMMUTABLE STRICT;
 
 
 /*
@@ -431,9 +443,15 @@ CREATE OPERATOR & (
 );
 
 
+/*
+ * CASTs
+ */
 CREATE CAST (MADLIB_SCHEMA.bitmap8 AS INT8[]) 
 WITH FUNCTION MADLIB_SCHEMA.bitmap8_return_array(MADLIB_SCHEMA.bitmap8);
 
 
 CREATE CAST (INT8[] AS MADLIB_SCHEMA.bitmap8) 
 WITH FUNCTION MADLIB_SCHEMA.array_return_bitmap8(INT8[]);
+
+CREATE CAST (MADLIB_SCHEMA.bitmap8 AS VARBIT) 
+WITH FUNCTION MADLIB_SCHEMA.bitmap8_return_varbit(MADLIB_SCHEMA.bitmap8);

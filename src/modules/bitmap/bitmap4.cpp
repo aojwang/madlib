@@ -79,12 +79,20 @@ bitmap4_out::run(AnyType &args){
 
 
 /**
+ * @brief get the varbit representation for the bitmap
+ */
+AnyType
+bitmap4_return_varbit::run(AnyType &args){
+    return BitmapUtil::bitmap_return_varbit<int32_t>(args);
+}
+
+
+/**
  * @brief get an integer array from the bitmap.
  */
 AnyType
 bitmap4_return_array::run(AnyType &args){
-    return AnyType(args[0].getAs<ArrayHandle<int32_t> >(true),
-            (Oid)TypeTraits<ArrayHandle<int32_t> >::oid);
+    return BitmapUtil::bitmap_return_array<int32_t>(args);
 }
 
 
