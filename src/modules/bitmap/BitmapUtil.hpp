@@ -5,6 +5,7 @@
 
 #include "Bitmap_proto.hpp"
 #include "Bitmap_impl.hpp"
+#include "Bitmap.hpp"
 
 namespace madlib {
 namespace modules {
@@ -13,28 +14,11 @@ namespace bitmap {
 using madlib::dbconnector::postgres::TypeTraits;
 using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
-// convert the bitmap to AnyType
-#define ANYTYPE_FROM_BITMAP(val) AnyType(ArrayHandle<T>(val), InvalidOid)
-#define ANYTYPE_FROM_BITMAP_NULL(val) (NULL != (val) ? \
-            AnyType(ArrayHandle<T>(val), InvalidOid) : \
-            AnyType())
-//convert the array to AnyType
-#define ANYTYPE_FROM_ARRAY(val, T) AnyType(ArrayHandle<T>(val))
-
-// return AnyType from bitmap
-#define RETURN_ANYTYPE_FROM_BITMAP(val) \
-            return ANYTYPE_FROM_BITMAP(val)
-#define RETURN_ANYTYPE_FROM_BITMAP_NULL(val) \
-            ArrayType* res = val; \
-            return ANYTYPE_FROM_BITMAP_NULL(res)
-// return AnyType from bitmap
-#define RETURN_ANYTYPE_FROM_ARRAY(val, T) \
-            return ANYTYPE_FROM_ARRAY(val, T)
 
 // convert the bitmap to array in different cases
-#define MUTABLE_BITMAP(arg) arg.getAs< MutableArrayHandle<T> >(false, false)
-#define CLONE_BITMAP(arg) arg.getAs< MutableArrayHandle<T> >(false, true)
-#define IMMUTABLE_BITMAP(arg) arg.getAs< ArrayHandle<T> >(false, false)
+#define MUTABLE_BITMAP(arg)     GETARG_MUTABLE_BITMAP(arg, T)
+#define CLONE_BITMAP(arg)       GETARG_CLONEABLE_BITMAP(arg, T)
+#define IMMUTABLE_BITMAP(arg)   GETARG_IMMUTABLE_BITMAP(arg, T)
 
 /**
  * @brief This class encapsulate the interfaces for manipulate the bitmap
@@ -67,7 +51,7 @@ public:
  */
 template<typename T>
 static
-AnyType
+const ArrayType*
 bitmap_agg_sfunc
 (
     AnyType &args
@@ -79,13 +63,12 @@ bitmap_agg_sfunc
     if (state.isNull()){
         Bitmap<T> bitmap(size_per_add, size_per_add);
         bitmap.insert(input_bit);
-        return ANYTYPE_FROM_BITMAP(bitmap());
+        return bitmap();
     }
     // state is not null
     Bitmap<T> bitmap(MUTABLE_BITMAP(state), size_per_add);
     bitmap.insert(input_bit);
-    return bitmap.updated() ? ANYTYPE_FROM_BITMAP(bitmap()) :
-                              ANYTYPE_FROM_BITMAP(IMMUTABLE_BITMAP(state));
+    return bitmap.updated() ? bitmap() : IMMUTABLE_BITMAP(state).array();
 }
 
 
@@ -107,7 +90,7 @@ bitmap_agg_sfunc
  */
 template <typename T>
 static
-AnyType
+const ArrayType*
 bitmap_agg_pfunc
 (
     AnyType &args
@@ -119,7 +102,7 @@ bitmap_agg_pfunc
 
     // if the two states are all null, return one of them
     if (nonull_index < 0)
-        return states[0];
+        return NULL;
 
     // one of the arguments is null
     // trim the zero elements in the non-null bitmap
@@ -127,16 +110,16 @@ bitmap_agg_pfunc
         // no need to increase the bitmap size
         Bitmap<T> bitmap(MUTABLE_BITMAP(states[nonull_index]));
         if (bitmap.full()){
-            RETURN_ANYTYPE_FROM_BITMAP(IMMUTABLE_BITMAP(states[nonull_index]));
+            return IMMUTABLE_BITMAP(states[nonull_index]).array();
         }
-        RETURN_ANYTYPE_FROM_BITMAP(bitmap(false));
+        return bitmap(false);
     }
 
     // all the arguments are not null
     // the two state-arrays can be written without copying it
     Bitmap<T> bm1(MUTABLE_BITMAP(states[0]));
     Bitmap<T> bm2(MUTABLE_BITMAP(states[1]));
-    RETURN_ANYTYPE_FROM_BITMAP(bm1.op_or(bm2));
+    return bm1.op_or(bm2);
 }
 
 
@@ -158,14 +141,14 @@ bitmap_agg_pfunc
  */
 template<typename T>
 static
-AnyType
+const ArrayType*
 bitmap_and
 (
     AnyType &args
 ){
     Bitmap<T> bm1(CLONE_BITMAP(args[0]));
     Bitmap<T> bm2(CLONE_BITMAP(args[1]));
-    RETURN_ANYTYPE_FROM_BITMAP_NULL(bm1.op_and(bm2));
+    return bm1.op_and(bm2);
 }
 
 
@@ -187,14 +170,14 @@ bitmap_and
  */
 template<typename T>
 static
-AnyType
+const ArrayType*
 bitmap_or
 (
     AnyType &args
 ){
     Bitmap<T> bm1(CLONE_BITMAP(args[0]));
     Bitmap<T> bm2(CLONE_BITMAP(args[1]));
-    RETURN_ANYTYPE_FROM_BITMAP_NULL(bm1.op_or(bm2));
+    return bm1.op_or(bm2);
 }
 
 
@@ -208,12 +191,12 @@ bitmap_or
  */
 template<typename T>
 static
-AnyType
+const int64_t
 bitmap_nonzero_count
 (
     AnyType &args
 ){
-    return AnyType((Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).nonzero_count());
+    return (Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).nonzero_count();
 }
 
 
@@ -228,14 +211,13 @@ bitmap_nonzero_count
  */
 template <typename T>
 static
-AnyType
+const ArrayType*
 bitmap_nonzero_positions
 (
     AnyType &args
 ){
 
-    RETURN_ANYTYPE_FROM_ARRAY(
-        (Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).nonzero_positions(), int64_t);
+    return (Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).nonzero_positions();
 }
 
 
@@ -250,7 +232,7 @@ bitmap_nonzero_positions
  */
 template <typename T>
 static
-AnyType
+const ArrayType*
 array_return_bitmap
 (
     AnyType &args
@@ -260,7 +242,7 @@ array_return_bitmap
     int size = handle.size();
 
     if (0 == size)
-        return AnyType();
+        return NULL;
 
     int bsize = (size >> 5) / 10;
     bsize = bsize < 2 ? 2 : bsize;
@@ -270,7 +252,7 @@ array_return_bitmap
         bitmap.insert(array[i]);
     }
 
-    RETURN_ANYTYPE_FROM_BITMAP(bitmap(false));
+    return bitmap(false);
 }
 
 
@@ -283,12 +265,12 @@ array_return_bitmap
  */
 template <typename T>
 static
-AnyType
+const ArrayType*
 bitmap_in
 (
     AnyType &args
 ){
-    RETURN_ANYTYPE_FROM_BITMAP((Bitmap<T>(args[0].getAs<char*>()))(false));
+    return (Bitmap<T>(args[0].getAs<char*>()))(false);
 }
 
 
@@ -301,12 +283,12 @@ bitmap_in
  */
 template <typename T>
 static
-AnyType
+char*
 bitmap_out
 (
     AnyType &args
 ){
-    return AnyType((Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).to_string());
+    return (Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).to_string();
 }
 
 
@@ -319,12 +301,12 @@ bitmap_out
  */
 template <typename T>
 static
-AnyType
+VarBit*
 bitmap_return_varbit
 (
     AnyType &args
 ){
-    return AnyType((Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).to_varbit());
+    return (Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).to_varbit();
 }
 
 
@@ -337,13 +319,12 @@ bitmap_return_varbit
  */
 template <typename T>
 static
-AnyType
+const ArrayType*
 bitmap_return_array
 (
     AnyType &args
 ){
-    return AnyType(IMMUTABLE_BITMAP(args[0]),
-            (Oid)TypeTraits<ArrayHandle<T> >::oid);
+    return IMMUTABLE_BITMAP(args[0]).array();
 }
 
 
@@ -355,10 +336,8 @@ public:
  *
  * @param args[0]   the bitmap array
  * @param args[1]   the bitmap array
- * @param is_gt     true if the invoker implements the > operator
- *                  false if the invoker implements the < operator
  *
- * @return is_gt ? args[0] > args[1] : args[0] < args[1]
+ * @return args[0] > args[1]
  * @note currently, we will never use the > operator. Therefore, we just
  *       compare the length of the bitmap array for simplicity. This function
  *       will be used in the btree operator class.
@@ -366,14 +345,12 @@ public:
  */
 template <typename T>
 static
-AnyType
+const bool
 bitmap_gt
 (
-    AnyType &args,
-    bool is_gt = true
+    AnyType &args
 ){
-    BITMAPOP op = bitmap_cmp_internal<T>(args);
-    return (is_gt ? op == GT : op == LT);
+    return bitmap_cmp_internal<T>(args) == GT;
 }
 
 
@@ -382,10 +359,8 @@ bitmap_gt
  *
  * @param args[0]   the bitmap array
  * @param args[1]   the bitmap array
- * @param is_ge     true if the invoker implements the >= operator
- *                  false if the invoker implements the < operator
  *
- * @return is_gt ? args[0] >= args[1] : args[0] <= args[1]
+ * @return args[0] >= args[1]
  * @note currently, we will never use the >= operator. Therefore, we just
  *       compare the length of the bitmap array for simplicity. This function
  *       will be used in the btree operator class.
@@ -393,14 +368,13 @@ bitmap_gt
  */
 template <typename T>
 static
-AnyType
+const bool
 bitmap_ge
 (
-    AnyType &args,
-    bool is_ge = true
+    AnyType &args
 ){
     BITMAPOP op = bitmap_cmp_internal<T>(args);
-    return (is_ge ? op == GT : op == LT) || (op == EQ);
+    return (op == GT)  || (op == EQ);
 }
 
 
@@ -409,25 +383,20 @@ bitmap_ge
  *
  * @param args[0]   the bitmap array
  * @param args[1]   the bitmap array
- * @param is_eq     true if the invoker implements = operator
- *                  false if the invoker implements != operator
  *
- * @return is_eq ? args[0] == args[1] : !(args[0] == args[1])
+ * @return args[0] == args[1]
  *
  */
 template <typename T>
 static
-AnyType
+const bool
 bitmap_eq
 (
-    AnyType &args,
-    bool is_eq = true
+    AnyType &args
 ){
-
     // as the first element of bitmap is the size of the array
     // we don't need to care about the size of the array
-    bool res = (bitmap_cmp_internal<T>(args) == EQ);
-    return is_eq ? res : !res;
+    return bitmap_cmp_internal<T>(args) == EQ;
 }
 
 
@@ -442,7 +411,7 @@ bitmap_eq
  */
 template <typename T>
 static
-AnyType
+const int32_t
 bitmap_cmp
 (
     AnyType &args
@@ -453,7 +422,7 @@ bitmap_cmp
 protected:
 template <typename T>
 static
-BITMAPOP
+const BITMAPOP
 bitmap_cmp_internal
 (
     AnyType &args

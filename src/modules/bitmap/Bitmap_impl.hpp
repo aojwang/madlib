@@ -355,6 +355,9 @@ Bitmap<T>::to_ArrayType
     if (use_capacity || (m_size == m_capacity))
         return m_bmArray;
 
+    if (empty())
+        return NULL;
+
     // do not change m_bitmap and m_bmArray
     return alloc_array(m_bitmap, m_size);
 }
@@ -577,12 +580,12 @@ Bitmap<T>::nonzero_positions(int64_t* result){
             begin_pos += m_base;
         }else{
             if ((word & (m_wordcnt_mask + 1)) > 0){
-                int n = (word & m_wordcnt_mask) * m_base;
+                int64_t n = (word & m_wordcnt_mask) * (int64_t)m_base;
                 for (; n > 0 ; --n){
                     result[j++] = k++;
                 }
             }
-            begin_pos += (word & m_wordcnt_mask) * m_base;
+            begin_pos += (word & m_wordcnt_mask) * (int64_t)m_base;
         }
     }
 

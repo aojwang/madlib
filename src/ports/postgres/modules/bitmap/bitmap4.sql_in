@@ -42,8 +42,8 @@ CREATE TYPE MADLIB_SCHEMA.bitmap4 (
    internallength = VARIABLE, 
    input = MADLIB_SCHEMA.bitmap4_in,
    output = MADLIB_SCHEMA.bitmap4_out,
-   storage=EXTENDED,
-       alignment = int4
+   storage = EXTENDED,
+   alignment = int4
 );
 
 /*
@@ -425,7 +425,7 @@ CREATE OPERATOR CLASS MADLIB_SCHEMA.bitmap4_index_btree
 DEFAULT FOR TYPE MADLIB_SCHEMA.bitmap4 USING btree AS
 OPERATOR        1       MADLIB_SCHEMA.< ,
 OPERATOR        2       MADLIB_SCHEMA.<= ,
-OPERATOR        3       MADLIB_SCHEMA.== ,
+OPERATOR        3       MADLIB_SCHEMA.=,
 OPERATOR        4       MADLIB_SCHEMA.>= ,
 OPERATOR        5       MADLIB_SCHEMA.>,
 FUNCTION        1       MADLIB_SCHEMA.bitmap4_cmp(MADLIB_SCHEMA.bitmap4, MADLIB_SCHEMA.bitmap4);
