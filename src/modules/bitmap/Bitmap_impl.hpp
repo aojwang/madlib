@@ -151,10 +151,10 @@ void
 Bitmap<T>::breakup_compword
 (
     T* newbitmap,
-    int index,
-    int pos_in_word,
-    int word_pos,
-    int num_words
+    int32_t index,
+    int32_t pos_in_word,
+    int32_t word_pos,
+    int32_t num_words
 ){
     memmove(newbitmap, m_bitmap, (index + 1) * sizeof(T));
     // the inserted position is in the middle of a composite word
@@ -257,8 +257,7 @@ Bitmap<T>::append
     }
 
     if (need_elems + m_size > m_capacity){
-        m_capacity += ((need_elems + m_size_per_add - 1 ) / m_size_per_add)
-                      * m_size_per_add;
+        m_capacity += BM_ALIGN(need_elems, m_size_per_add);
         m_bitmap = alloc_bitmap(m_capacity, m_bitmap, m_size);
         m_bitmap_updated = true;
     }
@@ -325,7 +324,7 @@ Bitmap<T>::insert
             int64_t temp = num_words * m_base;
             cur_pos += temp;
             if (cur_pos >= bit_pos){
-                insert_compword(bit_pos - cur_pos - temp, num_words, i);
+                insert_compword(bit_pos - (cur_pos - temp), num_words, i);
                 return *this;
             }
         }

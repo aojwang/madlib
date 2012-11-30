@@ -18,7 +18,7 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 #define BM_ROUND(n, c, T) (((n) & BM_MASK(c, T)) + ((n) >> BM_POW(c, T) & BM_MASK(c, T)))
 
 // align the 'val' with 'align' length
-#define BM_ALIGN(val, align) (((val) + (align) - 1) / (align)) * (align)
+#define BM_ALIGN(val, align) ((((val) + (align) - 1) / (align)) * (align))
 
 // does the composite word represent continuous 1
 #define BM_COMPWORD_ONE(val) (((val) & (m_wordcnt_mask + 1)) > 0)
