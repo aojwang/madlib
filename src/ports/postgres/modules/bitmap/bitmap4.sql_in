@@ -431,20 +431,9 @@ OPERATOR        5       MADLIB_SCHEMA.>,
 FUNCTION        1       MADLIB_SCHEMA.bitmap4_cmp(MADLIB_SCHEMA.bitmap4, MADLIB_SCHEMA.bitmap4);
 
 
-
-CREATE OPERATOR | (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
-    procedure = MADLIB_SCHEMA.bitmap4_or
-);
-
 CREATE OPERATOR MADLIB_SCHEMA.| (
     leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
     procedure = MADLIB_SCHEMA.bitmap4_or
-);
-
-CREATE OPERATOR & (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
-    procedure = MADLIB_SCHEMA.bitmap4_and
 );
 
 CREATE OPERATOR MADLIB_SCHEMA.& (

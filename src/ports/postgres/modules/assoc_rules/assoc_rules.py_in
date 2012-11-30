@@ -60,7 +60,10 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
     begin_func_exec = time.time();
     begin_step_exec = time.time();
     cal_itemsets_time = 0;
-
+    plpy.execute("""
+        SELECT set_config('search_path', 
+                current_setting('search_path') || ',{madlib_schema}', 
+                false)""".format(madlib_schema=madlib_schema));
     #check parameters
     __assert(
             support is not None and

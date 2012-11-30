@@ -428,23 +428,10 @@ CREATE OPERATOR MADLIB_SCHEMA.| (
     procedure = MADLIB_SCHEMA.bitmap8_or
 );
 
-
-CREATE OPERATOR | (
-    leftarg = MADLIB_SCHEMA.bitmap8, rightarg = MADLIB_SCHEMA.bitmap8, 
-    procedure = MADLIB_SCHEMA.bitmap8_or
-);
-
 CREATE OPERATOR MADLIB_SCHEMA.& (
     leftarg = MADLIB_SCHEMA.bitmap8, rightarg = MADLIB_SCHEMA.bitmap8, 
     procedure = MADLIB_SCHEMA.bitmap8_and
 );
-
-
-CREATE OPERATOR & (
-    leftarg = MADLIB_SCHEMA.bitmap8, rightarg = MADLIB_SCHEMA.bitmap8, 
-    procedure = MADLIB_SCHEMA.bitmap8_and
-);
-
 
 /*
  * CASTs
