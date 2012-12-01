@@ -159,7 +159,7 @@ Bitmap<T>::breakup_compword
     memmove(newbitmap, m_bitmap, (index + 1) * sizeof(T));
     // the inserted position is in the middle of a composite word
     if (word_pos > 1 && word_pos < num_words){
-        memcpy(newbitmap + index + 2,
+        memmove(newbitmap + index + 2,
                 m_bitmap + index, (m_size - index) * sizeof(T));
         newbitmap[index] = (T)(word_pos - 1) | m_sw_zero_mask;
         newbitmap[index + 2] = (T)(num_words - word_pos) | m_sw_zero_mask;
@@ -384,8 +384,8 @@ Bitmap<T>::bitwise_proc
     int i = 1;
     int j = 1;
     int k = 1;
-    int num_words1 = 0;
-    int num_words2 = 0;
+    T num_words1 = 0;
+    T num_words2 = 0;
     T temp;
     T pre_word = 0;
     int capacity = m_size + rhs.m_size;

@@ -171,11 +171,14 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
         """);
     plpy.execute("""
         INSERT INTO assoc_item_uniq (item_text, cnt) 
-        SELECT {item_col} , count({tid_col}) as cnt
-        FROM {input_table}
-        WHERE {item_col} IS NOT NULL AND {tid_col} IS NOT NULL
-        GROUP BY {item_col}
-        HAVING count({tid_col})::FLOAT8 >= {min_supp}
+        SELECT item, count(tid) as cnt
+        FROM (
+            SELECT {item_col} as item, {tid_col} as tid FROM {input_table}
+            WHERE {item_col} IS NOT NULL AND {tid_col} IS NOT NULL
+            GROUP BY {item_col}, {tid_col}
+            ) t
+        GROUP BY item
+        HAVING count(tid)::FLOAT8 >= {min_supp}
         """.format(min_supp=min_supp_tranx, item_col=item_col, 
                    tid_col=tid_col, input_table=input_table));
     if verbose :
