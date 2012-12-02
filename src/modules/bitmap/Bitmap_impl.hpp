@@ -164,7 +164,7 @@ Bitmap<T>::breakup_compword
         newbitmap[index] = (T)(word_pos - 1) | m_sw_zero_mask;
         newbitmap[index + 2] = (T)(num_words - word_pos) | m_sw_zero_mask;
         ++index;
-        newbitmap[0] += 2;
+        m_size += 2;
     }else{
         memmove(newbitmap + index + 1,
                 m_bitmap + index, (m_size - index) * sizeof(T));
@@ -176,12 +176,12 @@ Bitmap<T>::breakup_compword
             newbitmap[index] = (T)(num_words - 1) | m_sw_zero_mask;
             ++index;
         }
-        newbitmap[0] += 1;
+        m_size += 1;
     }
 
     newbitmap[index] = (T)1 << (pos_in_word - 1);
     m_bitmap = newbitmap;
-    m_size = m_bitmap[0];
+    m_bitmap[0] = m_size;
 }
 
 
@@ -265,7 +265,7 @@ Bitmap<T>::append
     // fill the composite words
     for (; need_elems > 2; --need_elems){
         m_bitmap[i++] = m_sw_zero_mask | max_bits;
-        ++m_bitmap[0];
+        ++m_size;
     }
 
     // the first word is composite word
@@ -273,15 +273,49 @@ Bitmap<T>::append
     if ((2 == need_elems) && (num_words > 1)){
         m_bitmap[i] = m_sw_zero_mask | (T)(num_words - 1);
         m_bitmap[++i] = (T)1 << (cur_pos - 1);
-        m_bitmap[0] += 2;
+        m_size += 2;
     }else{
         // only one normal word can represent the input number
         m_bitmap[i] = (T)1 << (cur_pos - 1);
-        m_bitmap[0] += 1;
+        m_size += 1;
     }
 
     // set the size of the bitmap
-    m_size = m_bitmap[0];
+    m_bitmap[0] = m_size;
+}
+
+
+/**
+ * @brief if the normal word can be represent as a composite word, we
+ *        need to merge it with the previous composite word
+ *
+ * @param curword   the current word
+ * @param i         the index of the current word
+ *
+ */
+template <typename T>
+inline
+void
+Bitmap<T>::merge_norm_to_comp
+(
+    T& curword,
+    int i
+){
+    T& preword = m_bitmap[i - 1];
+    // the previous word is not a composite word, or
+    // it represents the maximum composite word for continuous one, or
+    // it's a composite word with zero
+    if (preword > 0 ||
+        !(BM_COMPWORD_ONE(preword)) ||
+        BM_FULL_COMP_ONE(preword)){
+        curword = m_sw_one_mask | 1;
+    }else{
+        memmove(m_bitmap + i, m_bitmap + (i + 1),
+                (m_size - i - 1) * sizeof(T));
+        preword += 1;
+        m_size -= 1;
+        m_bitmap[0] = m_size;
+    }
 }
 
 
@@ -291,6 +325,8 @@ Bitmap<T>::append
  * @param bit_pos   the input number
  *
  * @return the new bitmap after inserted.
+ *
+ * @note duplicated numbers are allowed
  *
  */
 template <typename T>
@@ -310,21 +346,30 @@ Bitmap<T>::insert
     // visit each element of the bitmap array to find the right word to
     // insert the input number
     for (i = 1; i < m_size; ++i){
-        if (m_bitmap[i] > 0){
+        T& curword = m_bitmap[i];
+        if (curword > 0){
             cur_pos += m_base;
             // insert the input bit position to a normal word
             if (cur_pos >= bit_pos){
-                m_bitmap[i] |= (T)1 << ((get_pos_word(bit_pos)) - 1);
+                // use | rather than + to allow duplicated numbers insertion
+                curword |= (T)1 << ((get_pos_word(bit_pos)) - 1);
+                if ((~m_sw_zero_mask) == curword){
+                    merge_norm_to_comp(curword, i);
+                }
                 return *this;
             }
-        }else if (m_bitmap[i] < 0){
+        }else if (curword < 0){
             // get the number of words for a composite word
             // each word contains m_base bits
-            num_words = BM_NUMWORDS_IN_COMP(m_bitmap[i]);
+            num_words = BM_NUMWORDS_IN_COMP(curword);
             int64_t temp = num_words * m_base;
             cur_pos += temp;
             if (cur_pos >= bit_pos){
-                insert_compword(bit_pos - (cur_pos - temp), num_words, i);
+                // if the inserting position is in a composite word with 1
+                // then that's a duplicated number
+                if (BM_COMPWORD_ZERO(curword)){
+                    insert_compword(bit_pos - (cur_pos - temp), num_words, i);
+                }
                 return *this;
             }
         }

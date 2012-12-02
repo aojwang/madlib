@@ -22,6 +22,8 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
 // does the composite word represent continuous 1
 #define BM_COMPWORD_ONE(val) (((val) & (m_wordcnt_mask + 1)) > 0)
+#define BM_COMPWORD_ZERO(val) (((val) & (m_wordcnt_mask + 1)) == 0)
+
 
 // the two composite words are the same sign?
 #define BM_SAME_SIGN(lhs, rhs) (((lhs) < 0) && ((rhs) < 0) && \
@@ -32,6 +34,9 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
 // get the number of words in the composite word
 #define BM_NUMWORDS_IN_COMP(val) ((val) & m_wordcnt_mask)
+
+#define BM_FULL_COMP_ONE(val) (val == ((T)-1))
+#define BM_FULL_COMP_ZERO(val) (val == (m_wordcnt_mask | m_sw_zero_mask))
 
 // get the maximum 0s or 1s can be represented by a composite word
 // for bitmap4, its 0x3F FF FF FF.
@@ -190,7 +195,10 @@ protected:
     inline void insert_compword(int64_t bit_pos, int64_t num_words, int index);
 
     // append a bit 1 to the bitmap
-    inline void append( int64_t bit_pos);
+    inline void append(int64_t bit_pos);
+
+    // merge a normal word to a composite word
+    inline void merge_norm_to_comp(T& curword, int index);
 
     // allocate a new array with ArrayType encapsulated
     // X is the type of the array, we need to search the type
