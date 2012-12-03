@@ -408,6 +408,69 @@ Bitmap<T>::to_ArrayType
 
 
 /**
+ * @brief bitwise operation on a normal word and a composite word
+ * @param norm      the normal word
+ * @param comp      the composite word
+ * @param i         the index of the normal word in its bitmap
+ * @param j         the index of the composite word in its bitmap
+ * @param lhs       the bitmap array for the normal word
+ * @param rhs       the bitmap array for the composite word
+ * @param op        the function pointer for the bitwise operation
+ *
+ * @ rturn the result of applying 'op' on the normal word and the composite word
+ */
+template <typename T>
+inline
+T
+Bitmap<T>::bitwise_norm_comp_words(T& norm, T& comp, int& i, int& j,
+            T* lhs, T* rhs, bitwise_op op){
+    T temp = (this->*op)(norm, comp);
+    --comp;
+    comp = BM_NUMWORDS_IN_COMP(comp) > 0 ? comp : rhs[++j];
+    norm = lhs[++i];
+    return temp;
+}
+
+
+/**
+ * @brief bitwise operation on two composite words
+ *
+ * @param lword     the left word
+ * @param rword     the right word
+ * @param i         the index of the left word in its bitmap
+ * @param j         the index of the right word in its bitmap
+ * @param lhs       the bitmap array for the left word
+ * @param rhs       the bitmap array for the right word
+ *
+ * @return the number of overlaped words for the two composite words
+ */
+template <typename T>
+inline
+T
+Bitmap<T>::bitwise_comp_comp_words(T& lword, T& rword, int& i, int& j,
+            T* lhs, T* rhs){
+    T l_num_words = BM_NUMWORDS_IN_COMP(lword);
+    T r_num_words = BM_NUMWORDS_IN_COMP(rword);
+    // left composite word contains more normal words
+    if (l_num_words > r_num_words){
+        lword -= r_num_words;
+        rword = rhs[++j];
+        return r_num_words;
+    }
+    // right composite word contains more normal words
+    if (r_num_words > l_num_words){
+        rword -= l_num_words;
+        lword = lhs[++i];
+        return l_num_words;
+    }
+    // left and right composite word have the same number of normal words
+    lword = lhs[++i];
+    rword = rhs[++j];
+    return l_num_words;
+}
+
+
+/**
  * @brief the entry function for doing the bitwise operations,
  *        such as |, & and ^, etc.
  *
@@ -429,52 +492,30 @@ Bitmap<T>::bitwise_proc
     int i = 1;
     int j = 1;
     int k = 1;
-    T num_words1 = 0;
-    T num_words2 = 0;
     T temp;
     T pre_word = 0;
+    T lword = m_bitmap[i];
+    T rword = rhs.m_bitmap[j];
     int capacity = m_size + rhs.m_size;
     T* result = new T[capacity];
 
     for (; i < m_size && j < rhs.m_size; ++k){
         // the two words have the same sign
-        if ((m_bitmap[i] ^ rhs.m_bitmap[j]) >= 0){
-            temp = (this->*op)(m_bitmap[i], rhs.m_bitmap[j]);
-            // the two words are active words
-            if (m_bitmap[i] < 0){
-                num_words1 = BM_NUMWORDS_IN_COMP(m_bitmap[i]);
-                num_words2 = BM_NUMWORDS_IN_COMP(rhs.m_bitmap[j]);
-
-                // get the sign of the result
-                temp = temp & m_sw_one_mask;
-                if (num_words1 > num_words2){
-                    temp |= num_words2;
-                    m_bitmap[i] -= num_words2;
-                    --i;
-                }else if (num_words1 < num_words2){
-                    temp |= num_words1;
-                    rhs.m_bitmap[j] -= num_words1;
-                    --j;
-                }else{
-                    temp |= num_words1;
-                }
-            }
-            ++i;
-            ++j;
-        }else{
-            // "this" is a normal word and rhs is a composite word
-            if (m_bitmap[i] > 0){
-                temp = (this->*op)(m_bitmap[i], rhs.m_bitmap[j]);
-                rhs.m_bitmap[j] -= 1;
-                j += BM_NUMWORDS_IN_COMP(rhs.m_bitmap[j]) > 0 ? 0 : 1;
-                ++i;
+        if ((lword ^ rword) >= 0){
+            temp = (this->*op)(lword, rword);
+            if (lword < 0){
+                temp = (temp & m_sw_one_mask ) | bitwise_comp_comp_words
+                    (lword, rword, i, j, m_bitmap, rhs.m_bitmap);
             }else{
-                // "this" is a composite word and rhs is a normal word
-                temp = (this->*op)(rhs.m_bitmap[j], m_bitmap[i]);
-                m_bitmap[i] -= 1;
-                i += BM_NUMWORDS_IN_COMP(m_bitmap[i]) > 0 ? 0 : 1;
-                ++j;
+                lword = m_bitmap[++i];
+                rword = rhs.m_bitmap[++j];
             }
+        }else{
+            temp = lword > 0 ?
+                bitwise_norm_comp_words
+                    (lword, rword, i, j, m_bitmap, rhs.m_bitmap, op) :
+                bitwise_norm_comp_words
+                    (rword, lword, j, i, rhs.m_bitmap, m_bitmap, op);
         }
 
         // merge if needed
@@ -488,8 +529,8 @@ Bitmap<T>::bitwise_proc
     }
 
     // post-processing
-    k = (this->*postproc)(result, k, m_bitmap, i, m_size, pre_word);
-    k = (this->*postproc)(result, k, rhs.m_bitmap, j, rhs.m_size, pre_word);
+    k = (this->*postproc)(result, k, *this, i, lword, pre_word);
+    k = (this->*postproc)(result, k, rhs, j, rword, pre_word);
 
     // if the bitmap only has one word, and the word is a composite word with all
     // values are 0, then trim it
@@ -502,6 +543,75 @@ Bitmap<T>::bitwise_proc
     result[0] = (T)k;
 
     return (1 == k) ? NULL : alloc_array(result, k);
+}
+
+
+
+/**
+ * @brief the bitwise or operation on two words
+ *
+ * @param lhs   the left word
+ * @param rhs   the right word
+ *
+ * @return lhs | rhs
+ */
+template <typename T>
+inline
+T
+Bitmap<T>::bitwise_or
+(
+    T lhs,
+    T rhs
+){
+    T res = rhs > 0 ? lhs | rhs :
+                    BM_COMPWORD_ONE(rhs) ?
+                    m_sw_one_mask | 1 : lhs;
+    // if all the bits of the result are 1, then use a composite word
+    // to represent it
+    return res == (~m_sw_zero_mask) ? m_sw_one_mask | 1 : res;
+}
+
+
+/**
+ * @brief the post-processing for the OR operation. Here, we need to concat
+ *        the remainder bitmap elements to the result
+ *
+ * @param result    the array for keeping the 'or' result of two bitmaps
+ * @param k         the subscript if we insert new element to the result array
+ * @param bitmap    the bitmap that need to merge to the result array
+ * @param i         the index of the current word in the bitmap array
+ * @param curword   the current processing word in the bitmap array
+ * @param pre_word  the previous word in the bitmap array, compared with curword
+ *
+ * @return the number of elements in the result array
+ */
+template <typename T>
+inline
+int
+Bitmap<T>::or_postproc
+(
+    T* result,
+    int k,
+    Bitmap<T>& bitmap,
+    int i,
+    T curword,
+    T pre_word
+){
+    for (; i < bitmap.m_size; ++k){
+        T temp = (curword < 0) ? curword :
+                    ((curword == (~m_sw_zero_mask)) ?
+                    (m_sw_one_mask | 1) : curword);
+        if (k >= 2 && BM_SAME_SIGN(temp, pre_word)){
+            pre_word += BM_NUMWORDS_IN_COMP(temp);
+            result[--k] = pre_word;
+        }else{
+            result[k] = curword;
+            pre_word = curword;
+        }
+        curword = bitmap.m_bitmap[++i];
+    }
+
+    return k;
 }
 
 
@@ -523,6 +633,29 @@ Bitmap<T>::operator | (Bitmap<T>& rhs){
 }
 
 
+/**
+ * @brief the bitwise and operation on two words
+ *
+ * @param lhs   the left word
+ * @param rhs   the right word
+ *
+ * @return lhs & rhs
+ */
+template <typename T>
+inline
+T
+Bitmap<T>::bitwise_and
+(
+    T lhs,
+    T rhs
+){
+    T res = rhs > 0 ? lhs & rhs :
+                    BM_COMPWORD_ONE(rhs) ?
+                    lhs : m_sw_zero_mask | 1;
+    // if all the bits of the result are 0, then use a composite word
+    // to represent it
+    return (0 == res) ? (m_sw_zero_mask | 1) : res;
+}
 /**
  * @brief override the operator &
  *

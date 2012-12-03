@@ -99,7 +99,7 @@ template <typename T>
 class Bitmap{
     // function pointers for bitwise operation
     typedef T (Bitmap<T>::*bitwise_op)(T, T);
-    typedef int (Bitmap<T>::*bitwise_postproc)(T*, int, T*, int, int, T);
+    typedef int (Bitmap<T>::*bitwise_postproc)(T*, int, Bitmap<T>&, int, T, T);
 
 public:
     //ctor
@@ -199,6 +199,35 @@ protected:
 
     // merge a normal word to a composite word
     inline void merge_norm_to_comp(T& curword, int index);
+
+    // bitwise operation on a normal word and a composite word
+    inline T bitwise_norm_comp_words(T& norm, T& comp, int& i, int& j,
+                    T* lhs, T* rhs, bitwise_op op);
+
+    // bitwise operation on two composite words
+    inline T bitwise_comp_comp_words(T& lword, T& rword, int& i, int& j,
+                    T* lhs, T* rhs);
+
+    // the entry function for doing the bitwise operations,
+    // such as | and &, etc.
+    inline ArrayType* bitwise_proc(Bitmap<T>& rhs, bitwise_op op,
+            bitwise_postproc postproc);
+
+    // lhs should not be a composite word
+    inline T bitwise_or(T lhs, T rhs);
+
+    // lhs should not be a composite word
+    inline T bitwise_and(T lhs, T rhs);
+
+    // the post-processing for the OR operation. Here, we need to concat
+    // the remainder bitmap elements to the result
+    inline int or_postproc(T* result, int k, Bitmap<T>& bitmap,
+                            int i, T curword, T pre_word);
+
+    // the post-processing for the AND operation. Here, we need do nothing.
+    inline int and_postproc(T*, int k, Bitmap<T>&, int, T, T){
+        return k;
+    }
 
     // allocate a new array with ArrayType encapsulated
     // X is the type of the array, we need to search the type
@@ -301,57 +330,6 @@ protected:
         m_typoid = get_Oid((T)0);
         madlib_get_typlenbyvalalign
             (m_typoid, &m_typlen, &m_typbyval, &m_typalign);
-    }
-
-    // the entry function for doing the bitwise operations,
-    // such as | and &, etc.
-    ArrayType* bitwise_proc(Bitmap<T>& rhs, bitwise_op op,
-            bitwise_postproc postproc);
-
-    // lhs should not be a composite word
-    inline T bitwise_or(T lhs, T rhs){
-        T res = rhs > 0 ? lhs | rhs :
-                        BM_COMPWORD_ONE(rhs) ?
-                        m_sw_one_mask | 1 : lhs;
-        // if all the bits of the result are 1, then use a composite word
-        // to represent it
-        return res == (~m_sw_zero_mask) ? m_sw_one_mask | 1 : res;
-    }
-
-    // lhs should not be a composite word
-    inline T bitwise_and(T lhs, T rhs){
-        T res = rhs > 0 ? lhs & rhs :
-                        BM_COMPWORD_ONE(rhs) ?
-                        lhs : m_sw_zero_mask | 1;
-        // if all the bits of the result are 0, then use a composite word
-        // to represent it
-        return (0 == res) ? (m_sw_zero_mask | 1) : res;
-
-    }
-
-    // the post-processing for the OR operation. Here, we need to concat
-    // the remainder bitmap elements to the result
-    inline int or_postproc(T* result, int k, T* bitmap,
-                            int i, int n, T pre_word){
-        for (; i < n; ++i, ++k){
-            T temp = (bitmap[i] < 0) ? bitmap[i] :
-                        ((bitmap[i] == (~m_sw_zero_mask)) ?
-                        (m_sw_one_mask | 1) : bitmap[i]);
-            if (k >= 2 && BM_SAME_SIGN(temp, pre_word)){
-                pre_word += BM_NUMWORDS_IN_COMP(temp);
-                result[--k] = pre_word;
-            }else{
-                result[k] = bitmap[i];
-                pre_word = bitmap[i];
-            }
-        }
-
-        return k;
-    }
-
-    // the post-processing for the AND operation. Here, we need do nothing.
-    inline int and_postproc(T*, int k, T*, int, int, T){
-        return k;
     }
 
     // convert int64 number to a string

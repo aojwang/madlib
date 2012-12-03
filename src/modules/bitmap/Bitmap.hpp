@@ -20,25 +20,25 @@
             return AnyType(val, (bool)false)
 #define GETARG_MUTABLE_BITMAP(arg, T) \
             ((arg).getAs< MutableArrayHandle<T> >(false, false))
-#define GETARG_CLONEABLE_BITMAP(arg, T) \
+#define GETARG_CLONED_BITMAP(arg, T) \
             ((arg).getAs< MutableArrayHandle<T> >(false, true))
 #define GETARG_IMMUTABLE_BITMAP(arg, T) \
             ((arg).getAs< ArrayHandle<T> >(false, false))
 
 // return
-#define RETURN_BITMAP4(val)         RETURN_BITMAP(val, int32_t)
-#define RETURN_BITMAP4_NULL(val)    RETURN_BITMAP_NULL(val, int32_t)
-#define RETURN_BITMAP8(val)         RETURN_BITMAP(val, int64_t)
-#define RETURN_BITMAP8_NULL(val)    RETURN_BITMAP_NULL(val, int64_t)
-#define RETURN_INT4_ARRAY(val)      RETURN_ARRAY(val, int32_t)
-#define RETURN_INT8_ARRAY(val)      RETURN_ARRAY(val, int64_t)
+#define RETURN_BITMAP4(val)             RETURN_BITMAP(val, int32_t)
+#define RETURN_BITMAP4_NULL(val)        RETURN_BITMAP_NULL(val, int32_t)
+#define RETURN_BITMAP8(val)             RETURN_BITMAP(val, int64_t)
+#define RETURN_BITMAP8_NULL(val)        RETURN_BITMAP_NULL(val, int64_t)
+#define RETURN_INT4_ARRAY(val)          RETURN_ARRAY(val, int32_t)
+#define RETURN_INT8_ARRAY(val)          RETURN_ARRAY(val, int64_t)
 
-// get argument
+// get arguments
 #define GETARG_MUTABLE_BITMAP4(arg)     GETARG_MUTABLE_BITMAP(arg, int32_t)
-#define GETARG_CLONEABLE_BITMAP4(arg)   GETARG_CLONEABLE_BITMAP(arg, int32_t)
+#define GETARG_CLONED_BITMAP4(arg)      GETARG_CLONED_BITMAP(arg, int32_t)
 #define GETARG_IMMUTABLE_BITMAP4(arg)   GETARG_IMMUTABLE_BITMAP(arg, int32_t)
 #define GETARG_MUTABLE_BITMAP8(arg)     GETARG_MUTABLE_BITMAP(arg, int64_t)
-#define GETARG_CLONEABLE_BITMAP8(arg)   GETARG_CLONEABLE_BITMAP(arg, int64_t)
+#define GETARG_CLONED_BITMAP8(arg)      GETARG_CLONED_BITMAP(arg, int64_t)
 #define GETARG_IMMUTABLE_BITMAP8(arg)   GETARG_IMMUTABLE_BITMAP(arg, int64_t)
 
 

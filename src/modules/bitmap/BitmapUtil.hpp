@@ -17,7 +17,6 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
 // convert the bitmap to array in different cases
 #define MUTABLE_BITMAP(arg)     GETARG_MUTABLE_BITMAP(arg, T)
-#define CLONE_BITMAP(arg)       GETARG_CLONEABLE_BITMAP(arg, T)
 #define IMMUTABLE_BITMAP(arg)   GETARG_IMMUTABLE_BITMAP(arg, T)
 
 /**
@@ -146,8 +145,8 @@ bitmap_and
 (
     AnyType &args
 ){
-    Bitmap<T> bm1(CLONE_BITMAP(args[0]));
-    Bitmap<T> bm2(CLONE_BITMAP(args[1]));
+    Bitmap<T> bm1(IMMUTABLE_BITMAP(args[0]));
+    Bitmap<T> bm2(IMMUTABLE_BITMAP(args[1]));
     return bm1.op_and(bm2);
 }
 
@@ -175,8 +174,8 @@ bitmap_or
 (
     AnyType &args
 ){
-    Bitmap<T> bm1(CLONE_BITMAP(args[0]));
-    Bitmap<T> bm2(CLONE_BITMAP(args[1]));
+    Bitmap<T> bm1(IMMUTABLE_BITMAP(args[0]));
+    Bitmap<T> bm2(IMMUTABLE_BITMAP(args[1]));
     return bm1.op_or(bm2);
 }
 
