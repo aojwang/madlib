@@ -213,9 +213,9 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
         CREATE TEMP TABLE assoc_rule_sets_loop
             (
             id          BIGINT,
-            set_list    {madlib_schema}.bitmap4,
+            set_list    {madlib_schema}.bitmap,
             support     FLOAT8,
-            tids        {madlib_schema}.bitmap4
+            tids        {madlib_schema}.bitmap
             )
         m4_ifdef(`__GREENPLUM__',`DISTRIBUTED BY (id)')
         """.format(madlib_schema = madlib_schema));
@@ -223,9 +223,9 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
     plpy.execute("""
          INSERT INTO assoc_rule_sets_loop (id, set_list, support, tids)
          SELECT t2.item_id,
-                {madlib_schema}.bitmap4_agg(t2.item_id, 4),
+                {madlib_schema}.bitmap_agg(t2.item_id, 4),
                 t2.cnt::FLOAT8 / {num_tranx},
-                {madlib_schema}.bitmap4_agg(t1.{tid_col} + {min_tid}, 256)
+                {madlib_schema}.bitmap_agg(t1.{tid_col} + {min_tid}, 256)
          FROM {input_table} t1 RIGHT JOIN assoc_item_uniq t2
          ON t1.{item_col} = t2.item_text AND t1.{tid_col} IS NOT NULL
          GROUP BY t2.item_id, t2.cnt
@@ -269,9 +269,9 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
          CREATE TEMP TABLE assoc_loop_aux
             (
             id              BIGSERIAL,
-            set_list        {madlib_schema}.bitmap4,
+            set_list        {madlib_schema}.bitmap,
             support         FLOAT8,
-            tids            {madlib_schema}.bitmap4
+            tids            {madlib_schema}.bitmap
             )
          m4_ifdef(`__GREENPLUM__',`DISTRIBUTED BY (id)')
          """.format(madlib_schema = madlib_schema));
@@ -302,7 +302,7 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
              INSERT INTO assoc_rule_sets
                 (text_svec, support, iteration)
              SELECT array_to_string(
-                    {madlib_schema}.bitmap4_nonzero_positions(set_list), ','),
+                    {madlib_schema}.bitmap_nonzero_positions(set_list), ','),
                     support, {iter}
              FROM assoc_rule_sets_loop""".format(madlib_schema = madlib_schema, iter = iter)
              );
@@ -316,8 +316,8 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
         plpy.execute("TRUNCATE TABLE assoc_loop_aux");
         plpy.execute("""
            INSERT INTO assoc_loop_aux(set_list, support, tids)
-           SELECT DISTINCT ON(set_list::INT4[]) set_list,
-                   {madlib_schema}.bitmap4_nonzero_count(tids)::FLOAT8 / {num_tranx},
+           SELECT DISTINCT ON(set_list::INT[]) set_list,
+                   {madlib_schema}.bitmap_nonzero_count(tids)::FLOAT8 / {num_tranx},
                    tids
            FROM (
              SELECT
@@ -329,8 +329,8 @@ def assoc_rules(madlib_schema, support, confidence, tid_col,
                   assoc_rule_sets_loop t3
              WHERE t1.id = t2.sid and t2.did = t3.id
            ) t
-           WHERE {madlib_schema}.bitmap4_nonzero_count(set_list)::INT = {next_iter} AND
-                 {madlib_schema}.bitmap4_nonzero_count(tids)::FLOAT8 >= {min_supp_tranx}
+           WHERE {madlib_schema}.bitmap_nonzero_count(set_list)::INT = {next_iter} AND
+                 {madlib_schema}.bitmap_nonzero_count(tids)::FLOAT8 >= {min_supp_tranx}
            """.format(madlib_schema = madlib_schema, num_tranx = num_tranx,
                       next_iter = iter + 1, min_supp_tranx = min_supp_tranx)
            );

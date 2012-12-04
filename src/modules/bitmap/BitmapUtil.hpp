@@ -15,10 +15,6 @@ using madlib::dbconnector::postgres::TypeTraits;
 using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
 
-// convert the bitmap to array in different cases
-#define MUTABLE_BITMAP(arg)     GETARG_MUTABLE_BITMAP(arg, T)
-#define IMMUTABLE_BITMAP(arg)   GETARG_IMMUTABLE_BITMAP(arg, T)
-
 /**
  * @brief This class encapsulate the interfaces for manipulate the bitmap
  *        All functions are static.
@@ -55,12 +51,20 @@ bitmap_agg_sfunc
 (
     AnyType &args
 ){
-    madlib_assert((!args[1].isNull()) && (!args[2].isNull()),
-            std::invalid_argument("the input parameter input_bit and size_per_add"
+    madlib_assert(!args[1].isNull(),
+            std::invalid_argument("the input parameter input_bit"
                     "should not be null"));
-
     int64_t input_bit = args[1].getAs<int64_t>();
-    int size_per_add = args[2].getAs<int32_t>();
+
+    // the default value for this parameter
+    int size_per_add = 16;
+    if (3 == args.numFields()){
+        madlib_assert(!args[2].isNull(),
+                std::invalid_argument("the input parameter size_per_add"
+                        "should not be null"));
+        size_per_add = args[2].getAs<int32_t>();
+    }
+
     AnyType state = args[0];
 
     if (state.isNull()){
@@ -69,9 +73,9 @@ bitmap_agg_sfunc
         return bitmap();
     }
     // state is not null
-    Bitmap<T> bitmap(MUTABLE_BITMAP(state), size_per_add);
+    Bitmap<T> bitmap(GETARG_MUTABLE_BITMAP(state), size_per_add);
     bitmap.insert(input_bit);
-    return bitmap.updated() ? bitmap() : IMMUTABLE_BITMAP(state).array();
+    return bitmap.updated() ? bitmap() : GETARG_IMMUTABLE_BITMAP(state).array();
 }
 
 
@@ -111,17 +115,17 @@ bitmap_agg_pfunc
     // trim the zero elements in the non-null bitmap
     if (nonull_index < 2){
         // no need to increase the bitmap size
-        Bitmap<T> bitmap(MUTABLE_BITMAP(states[nonull_index]));
+        Bitmap<T> bitmap(GETARG_MUTABLE_BITMAP(states[nonull_index]));
         if (bitmap.full()){
-            return IMMUTABLE_BITMAP(states[nonull_index]).array();
+            return GETARG_IMMUTABLE_BITMAP(states[nonull_index]).array();
         }
         return bitmap(false);
     }
 
     // all the arguments are not null
     // the two state-arrays can be written without copying it
-    Bitmap<T> bm1(MUTABLE_BITMAP(states[0]));
-    Bitmap<T> bm2(MUTABLE_BITMAP(states[1]));
+    Bitmap<T> bm1(GETARG_MUTABLE_BITMAP(states[0]));
+    Bitmap<T> bm2(GETARG_MUTABLE_BITMAP(states[1]));
     return bm1.op_or(bm2);
 }
 
@@ -149,8 +153,8 @@ bitmap_and
 (
     AnyType &args
 ){
-    Bitmap<T> bm1(IMMUTABLE_BITMAP(args[0]));
-    Bitmap<T> bm2(IMMUTABLE_BITMAP(args[1]));
+    Bitmap<T> bm1(GETARG_IMMUTABLE_BITMAP(args[0]));
+    Bitmap<T> bm2(GETARG_IMMUTABLE_BITMAP(args[1]));
     return bm1.op_and(bm2);
 }
 
@@ -178,8 +182,8 @@ bitmap_or
 (
     AnyType &args
 ){
-    Bitmap<T> bm1(IMMUTABLE_BITMAP(args[0]));
-    Bitmap<T> bm2(IMMUTABLE_BITMAP(args[1]));
+    Bitmap<T> bm1(GETARG_IMMUTABLE_BITMAP(args[0]));
+    Bitmap<T> bm2(GETARG_IMMUTABLE_BITMAP(args[1]));
     return bm1.op_or(bm2);
 }
 
@@ -199,7 +203,7 @@ bitmap_nonzero_count
 (
     AnyType &args
 ){
-    return (Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).nonzero_count();
+    return (Bitmap<T>(GETARG_IMMUTABLE_BITMAP(args[0]))).nonzero_count();
 }
 
 
@@ -220,7 +224,7 @@ bitmap_nonzero_positions
     AnyType &args
 ){
 
-    return (Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).nonzero_positions();
+    return (Bitmap<T>(GETARG_IMMUTABLE_BITMAP(args[0]))).nonzero_positions();
 }
 
 
@@ -231,20 +235,20 @@ bitmap_nonzero_positions
  *
  * @return the bitmap for the input array.
  * @note T is the type of the bitmap
- *       the type of input array will be int64_t
+ *       X is the type of the input array
  */
-template <typename T>
+template <typename T, typename X>
 static
 const ArrayType*
 array_return_bitmap
 (
     AnyType &args
 ){
-    ArrayHandle<int64_t> handle = args[0].getAs< ArrayHandle<int64_t> >();
+    ArrayHandle<X> handle = args[0].getAs< ArrayHandle<X> >();
     madlib_assert(!ARR_HASNULL(handle.array()),
             std::invalid_argument("the input array should not contains null"));
 
-    const int64_t* array = handle.ptr();
+    const X* array = handle.ptr();
     int size = handle.size();
 
     if (0 == size)
@@ -255,7 +259,7 @@ array_return_bitmap
     Bitmap<T> bitmap(bsize, bsize);
 
     for (int i = 0; i < size; ++i){
-        bitmap.insert(array[i]);
+        bitmap.insert((int64_t)array[i]);
     }
 
     return bitmap(false);
@@ -294,7 +298,7 @@ bitmap_out
 (
     AnyType &args
 ){
-    return (Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).to_string();
+    return (Bitmap<T>(GETARG_IMMUTABLE_BITMAP(args[0]))).to_string();
 }
 
 
@@ -312,7 +316,7 @@ bitmap_return_varbit
 (
     AnyType &args
 ){
-    return (Bitmap<T>(IMMUTABLE_BITMAP(args[0]))).to_varbit();
+    return (Bitmap<T>(GETARG_IMMUTABLE_BITMAP(args[0]))).to_varbit();
 }
 
 
@@ -330,7 +334,7 @@ bitmap_return_array
 (
     AnyType &args
 ){
-    return IMMUTABLE_BITMAP(args[0]).array();
+    return GETARG_IMMUTABLE_BITMAP(args[0]).array();
 }
 
 

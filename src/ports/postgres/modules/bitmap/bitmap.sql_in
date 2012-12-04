@@ -3,7 +3,7 @@
  * @file bitmap.sql_in
  *
  * @brief SQL type definitions and functions for bitmap data type
- *        <tt>bitmap4</tt>
+ *        <tt>bitmap</tt>
  *
  * @sa For an introduction to the bitmap implementation, see the module
  *     description \ref grp_bitmap.
@@ -16,7 +16,7 @@
 
 @about
 
-This module implements two bitmap data types named "bitmap4" and "bitmap8",  
+This module implements two bitmap data types named MADLIB_SCHEMA.bitmap,  
 which gives compressed storage for input numbers and better time performance
 for the bitwise operations on bitmap. 
 
@@ -28,7 +28,7 @@ operation can achieve the goal. Even more, we can use the bitmap to represent
 the itemsets in each iteration. That is, we can retrieve the itemsets in the
 next iteration using "or" operation on every two itemsets in the current iteration.
 
-Let's use an example to explain how we build the bitmap4.
+Let's use an example to explain how we build the bitmap.
 
 \code
 '{1,2,3, 32~3100000, 10000000}'::BIGINT[].
@@ -168,7 +168,7 @@ sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap::varbit AS varbitcast
 
 m4_include(`SQLCommon.m4')
 
-CREATE TYPE MADLIB_SCHEMA.bitmap4;
+CREATE TYPE MADLIB_SCHEMA.bitmap;
 
 /*
  * @brief the in function for the bitmap data type
@@ -177,8 +177,8 @@ CREATE TYPE MADLIB_SCHEMA.bitmap4;
  *
  * @return the bitmap representing the input string
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_in(cstring)
-RETURNS MADLIB_SCHEMA.bitmap4
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_in(cstring)
+RETURNS MADLIB_SCHEMA.bitmap
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
@@ -190,16 +190,16 @@ LANGUAGE C IMMUTABLE STRICT;
  *
  * @return the string representing the bitmap.
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_out(MADLIB_SCHEMA.bitmap4)
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_out(MADLIB_SCHEMA.bitmap)
 RETURNS cstring
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
 
 
-CREATE TYPE MADLIB_SCHEMA.bitmap4 (
+CREATE TYPE MADLIB_SCHEMA.bitmap (
    internallength = VARIABLE, 
-   input = MADLIB_SCHEMA.bitmap4_in,
-   output = MADLIB_SCHEMA.bitmap4_out,
+   input = MADLIB_SCHEMA.bitmap_in,
+   output = MADLIB_SCHEMA.bitmap_out,
    storage = EXTENDED,
    alignment = int4
 );
@@ -215,13 +215,33 @@ CREATE TYPE MADLIB_SCHEMA.bitmap4 (
  *
  * @return an array indicating the state after inserted the input number.
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_agg_sfunc
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_agg_sfunc
 (
-    MADLIB_SCHEMA.bitmap4,
+    MADLIB_SCHEMA.bitmap,
     INT8,
     INT4
 )
-RETURNS MADLIB_SCHEMA.bitmap4
+RETURNS MADLIB_SCHEMA.bitmap
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief the step function for aggregating the input numbers to
+ * a compressed bitmap.
+ *
+ * @param args[0]   an array indicating the state
+ * @param args[1]   the input number
+ *
+ * @return an array indicating the state after inserted the input number.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_agg_sfunc
+(
+    MADLIB_SCHEMA.bitmap,
+    INT8
+)
+RETURNS MADLIB_SCHEMA.bitmap
 AS 'MODULE_PATHNAME'
 LANGUAGE C
 IMMUTABLE;
@@ -235,26 +255,37 @@ IMMUTABLE;
  *
  * @return an array of merging the first state and the second state.
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_agg_pfunc
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_agg_pfunc
 (
-    MADLIB_SCHEMA.bitmap4,
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
 )
-RETURNS MADLIB_SCHEMA.bitmap4
+RETURNS MADLIB_SCHEMA.bitmap
 AS 'MODULE_PATHNAME'
 LANGUAGE C
 IMMUTABLE;
 
 
-CREATE AGGREGATE MADLIB_SCHEMA.bitmap4_agg
+CREATE AGGREGATE MADLIB_SCHEMA.bitmap_agg
 (
     INT8,
     INT4
 )
 (
-    SFUNC=MADLIB_SCHEMA.bitmap4_agg_sfunc,
-    STYPE=MADLIB_SCHEMA.bitmap4
-    m4_ifdef(`__GREENPLUM__',`,prefunc=MADLIB_SCHEMA.bitmap4_agg_pfunc')
+    SFUNC=MADLIB_SCHEMA.bitmap_agg_sfunc,
+    STYPE=MADLIB_SCHEMA.bitmap
+    m4_ifdef(`__GREENPLUM__',`,prefunc=MADLIB_SCHEMA.bitmap_agg_pfunc')
+);
+
+
+CREATE AGGREGATE MADLIB_SCHEMA.bitmap_agg
+(
+    INT8
+)
+(
+    SFUNC=MADLIB_SCHEMA.bitmap_agg_sfunc,
+    STYPE=MADLIB_SCHEMA.bitmap
+    m4_ifdef(`__GREENPLUM__',`,prefunc=MADLIB_SCHEMA.bitmap_agg_pfunc')
 );
 
 
@@ -266,12 +297,12 @@ CREATE AGGREGATE MADLIB_SCHEMA.bitmap4_agg
  *
  * @return the result of args[0] AND args[1].
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_and
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_and
 (
-    MADLIB_SCHEMA.bitmap4,
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
 )
-RETURNS MADLIB_SCHEMA.bitmap4
+RETURNS MADLIB_SCHEMA.bitmap
 AS 'MODULE_PATHNAME'
 LANGUAGE C
 IMMUTABLE STRICT;
@@ -285,12 +316,12 @@ IMMUTABLE STRICT;
  *
  * @return the result of args[0] OR args[1].
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_or
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_or
 (
-    MADLIB_SCHEMA.bitmap4,
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
 )
-RETURNS MADLIB_SCHEMA.bitmap4
+RETURNS MADLIB_SCHEMA.bitmap
 AS 'MODULE_PATHNAME'
 LANGUAGE C
 IMMUTABLE STRICT;
@@ -305,9 +336,9 @@ IMMUTABLE STRICT;
  * @note the position starts from 1.
  *
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_nonzero_positions
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_nonzero_positions
 (
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS INT8[]
 AS 'MODULE_PATHNAME'
@@ -323,9 +354,9 @@ IMMUTABLE STRICT;
  * @return the count of non-zero bits in the bitmap.
  *
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_nonzero_count
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_nonzero_count
 (
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS INT8
 AS 'MODULE_PATHNAME'
@@ -340,9 +371,9 @@ IMMUTABLE STRICT;
  *
  * @return the array representation for the bitmap.
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_return_array
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_return_array
 (
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS INT4[]
 AS 'MODULE_PATHNAME'
@@ -357,9 +388,9 @@ IMMUTABLE STRICT;
  *
  * @return the varbit representation for the bitmap.
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_return_varbit
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_return_varbit
 (
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS VARBIT
 AS 'MODULE_PATHNAME'
@@ -374,15 +405,31 @@ IMMUTABLE STRICT;
  *
  * @return the bitmap representation for the array.
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.array_return_bitmap4
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.int8array_return_bitmap
 (
     INT8[]
 )
-RETURNS MADLIB_SCHEMA.bitmap4
+RETURNS MADLIB_SCHEMA.bitmap
 AS 'MODULE_PATHNAME'
 LANGUAGE C 
 IMMUTABLE STRICT;
 
+
+/*
+ * @brief get the bitmap representation for the array
+ *
+ * @param args[0]   the input array
+ *
+ * @return the bitmap representation for the array.
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.int4array_return_bitmap
+(
+    INT4[]
+)
+RETURNS MADLIB_SCHEMA.bitmap
+AS 'MODULE_PATHNAME'
+LANGUAGE C 
+IMMUTABLE STRICT;
 
 /*
  * @brief The implementation of = operation.
@@ -392,10 +439,10 @@ IMMUTABLE STRICT;
  *
  * @return the result of args[0] = args[1].
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_eq
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_eq
 (
-    MADLIB_SCHEMA.bitmap4,
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
@@ -411,10 +458,10 @@ IMMUTABLE;
  *
  * @return the result of args[0] <> args[1].
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_neq
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_neq
 (
-    MADLIB_SCHEMA.bitmap4,
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
@@ -430,10 +477,10 @@ IMMUTABLE;
  *
  * @return the result of args[0] > args[1].
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_gt
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_gt
 (
-    MADLIB_SCHEMA.bitmap4,
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
@@ -449,10 +496,10 @@ IMMUTABLE;
  *
  * @return the result of args[0] < args[1].
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_lt
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_lt
 (
-    MADLIB_SCHEMA.bitmap4,
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
@@ -468,10 +515,10 @@ IMMUTABLE;
  *
  * @return the result of args[0] >= args[1].
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_ge
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_ge
 (
-    MADLIB_SCHEMA.bitmap4,
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
@@ -487,10 +534,10 @@ IMMUTABLE;
  *
  * @return the result of args[0] <= args[1].
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_le
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_le
 (
-    MADLIB_SCHEMA.bitmap4,
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
@@ -506,10 +553,10 @@ IMMUTABLE;
  *
  * @return 0 for equality; 1 for greater than; and -1 for less than.
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap4_cmp
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_cmp
 (
-    MADLIB_SCHEMA.bitmap4,
-    MADLIB_SCHEMA.bitmap4
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
 )
 RETURNS INT
 AS 'MODULE_PATHNAME'
@@ -518,32 +565,32 @@ IMMUTABLE;
 
 
 CREATE OPERATOR MADLIB_SCHEMA.= (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
-    procedure = MADLIB_SCHEMA.bitmap4_eq,
+    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
+    procedure = MADLIB_SCHEMA.bitmap_eq,
     commutator = operator(MADLIB_SCHEMA.=) ,
     negator = operator(MADLIB_SCHEMA.<>) ,
     restrict = eqsel, join = eqjoinsel
 );
 
 CREATE OPERATOR MADLIB_SCHEMA.== (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
-    procedure = MADLIB_SCHEMA.bitmap4_eq,
+    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
+    procedure = MADLIB_SCHEMA.bitmap_eq,
     commutator = operator(MADLIB_SCHEMA.=) ,
     negator = operator(MADLIB_SCHEMA.<>) ,
     restrict = eqsel, join = eqjoinsel
 );
 
 CREATE OPERATOR MADLIB_SCHEMA.<> (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
-    procedure = MADLIB_SCHEMA.bitmap4_neq,
+    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
+    procedure = MADLIB_SCHEMA.bitmap_neq,
     commutator = operator(MADLIB_SCHEMA.<>) ,
     negator = operator(MADLIB_SCHEMA.=) ,
     restrict = eqsel, join = eqjoinsel
 );
 
 CREATE OPERATOR MADLIB_SCHEMA.> (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
-    procedure = MADLIB_SCHEMA.bitmap4_gt,
+    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
+    procedure = MADLIB_SCHEMA.bitmap_gt,
     commutator = operator(MADLIB_SCHEMA.<) ,
     negator = operator(MADLIB_SCHEMA.<=) ,
     restrict = scalargtsel, join = scalargtjoinsel
@@ -551,24 +598,24 @@ CREATE OPERATOR MADLIB_SCHEMA.> (
 
 
 CREATE OPERATOR MADLIB_SCHEMA.>= (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
-    procedure = MADLIB_SCHEMA.bitmap4_ge,
+    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
+    procedure = MADLIB_SCHEMA.bitmap_ge,
     commutator = operator(MADLIB_SCHEMA.<=) ,
     negator = operator(MADLIB_SCHEMA.<) ,
     restrict = scalargtsel, join = scalargtjoinsel
 );
 
 CREATE OPERATOR MADLIB_SCHEMA.< (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
-    procedure = MADLIB_SCHEMA.bitmap4_lt,
+    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
+    procedure = MADLIB_SCHEMA.bitmap_lt,
     commutator = operator(MADLIB_SCHEMA.>) ,
     negator = operator(MADLIB_SCHEMA.>=) ,
     restrict = scalarltsel, join = scalarltjoinsel
 );
 
 CREATE OPERATOR MADLIB_SCHEMA.<= (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4,
-    procedure = MADLIB_SCHEMA.bitmap4_le,
+    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
+    procedure = MADLIB_SCHEMA.bitmap_le,
     commutator = operator(MADLIB_SCHEMA.>=) ,
     negator = operator(MADLIB_SCHEMA.>) ,
     restrict = scalarltsel, join = scalarltjoinsel
@@ -579,35 +626,38 @@ CREATE OPERATOR MADLIB_SCHEMA.<= (
  * define the btree index, so that we can use the type
  * in GROUP BY clause
  */
-CREATE OPERATOR CLASS MADLIB_SCHEMA.bitmap4_index_btree
-DEFAULT FOR TYPE MADLIB_SCHEMA.bitmap4 USING btree AS
+CREATE OPERATOR CLASS MADLIB_SCHEMA.bitmap_index_btree
+DEFAULT FOR TYPE MADLIB_SCHEMA.bitmap USING btree AS
 OPERATOR        1       MADLIB_SCHEMA.< ,
 OPERATOR        2       MADLIB_SCHEMA.<= ,
 OPERATOR        3       MADLIB_SCHEMA.=,
 OPERATOR        4       MADLIB_SCHEMA.>= ,
 OPERATOR        5       MADLIB_SCHEMA.>,
-FUNCTION        1       MADLIB_SCHEMA.bitmap4_cmp(MADLIB_SCHEMA.bitmap4, MADLIB_SCHEMA.bitmap4);
+FUNCTION        1       MADLIB_SCHEMA.bitmap_cmp(MADLIB_SCHEMA.bitmap, MADLIB_SCHEMA.bitmap);
 
 
 CREATE OPERATOR MADLIB_SCHEMA.| (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
-    procedure = MADLIB_SCHEMA.bitmap4_or
+    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap, 
+    procedure = MADLIB_SCHEMA.bitmap_or
 );
 
 CREATE OPERATOR MADLIB_SCHEMA.& (
-    leftarg = MADLIB_SCHEMA.bitmap4, rightarg = MADLIB_SCHEMA.bitmap4, 
-    procedure = MADLIB_SCHEMA.bitmap4_and
+    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap, 
+    procedure = MADLIB_SCHEMA.bitmap_and
 );
 
 
 /*
  * CASTs
  */
-CREATE CAST (MADLIB_SCHEMA.bitmap4 AS INT4[]) 
-WITH FUNCTION MADLIB_SCHEMA.bitmap4_return_array(MADLIB_SCHEMA.bitmap4);
+CREATE CAST (MADLIB_SCHEMA.bitmap AS INT4[]) 
+WITH FUNCTION MADLIB_SCHEMA.bitmap_return_array(MADLIB_SCHEMA.bitmap);
 
-CREATE CAST (INT8[] AS MADLIB_SCHEMA.bitmap4) 
-WITH FUNCTION MADLIB_SCHEMA.array_return_bitmap4(INT8[]);
+CREATE CAST (INT8[] AS MADLIB_SCHEMA.bitmap) 
+WITH FUNCTION MADLIB_SCHEMA.int8array_return_bitmap(INT8[]);
 
-CREATE CAST (MADLIB_SCHEMA.bitmap4 AS VARBIT) 
-WITH FUNCTION MADLIB_SCHEMA.bitmap4_return_varbit(MADLIB_SCHEMA.bitmap4);
+CREATE CAST (INT4[] AS MADLIB_SCHEMA.bitmap) 
+WITH FUNCTION MADLIB_SCHEMA.int4array_return_bitmap(INT4[]);
+
+CREATE CAST (MADLIB_SCHEMA.bitmap AS VARBIT) 
+WITH FUNCTION MADLIB_SCHEMA.bitmap_return_varbit(MADLIB_SCHEMA.bitmap);
