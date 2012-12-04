@@ -1,12 +1,170 @@
-/* ----------------------------------------------------------------------- *//**
+/* ----------------------------------------------------------------------- *//** 
  *
  * @file bitmap.sql_in
  *
- * @brief The \ref
+ * @brief SQL type definitions and functions for bitmap data type
+ *        <tt>bitmap4</tt>
  *
- * @sa 
+ * @sa For an introduction to the bitmap implementation, see the module
+ *     description \ref grp_bitmap.
  *
  *//* ----------------------------------------------------------------------- */
+
+
+/**
+@addtogroup grp_svec
+
+@about
+
+This module implements two bitmap data types named "bitmap4" and "bitmap8",  
+which gives compressed storage for input numbers and better time performance
+for the bitwise operations on bitmap. 
+
+There are lots of data mining algorithms use a bitmap to represent the input
+training data, and later do some bitwise operations on the bitmap. For example,
+in Apriori, we represent the transaction IDs for each item as a bitmap. Then if 
+we want to get the common transaction IDs for two items, then a simple "and"
+operation can achieve the goal. Even more, we can use the bitmap to represent 
+the itemsets in each iteration. That is, we can retrieve the itemsets in the
+next iteration using "or" operation on every two itemsets in the current iteration.
+
+Let's use an example to explain how we build the bitmap4.
+
+\code
+'{1,2,3, 32~3100000, 10000000}'::BIGINT[].
+\endcode
+
+This array would occupy slightly more than 24MB of memory/disk, most of 
+it are continuous numbers. Even if use a bit to represent it, we would still
+need more than 9MB space for that. Furthermore, it's hard and inefficient to 
+get the common elements for two such arrays.
+
+To solve the problem, we use a novel representation, MADLIB_SCHEMA.bitmap, 
+for a numerous of input data. the underlying implementation for the bitmap is 
+an INT4 array. Each element in the array is called as a word, which is 4 bytes. 
+There are two types of word: normal word and composite word. If the highest bit 
+of a word is 0, the it's a normal word. Otherwise, it's a composite word. 
+In a normal word, it has 31 bits except for the highest bit and we use the 
+position, starts from 1, of the bit in the word to represent a unique input data. 
+Therefore, a normal word can represent 31 unique input data. Say, a normal 
+word 7, which means the input number is 1,2,3. A composite word can represent 
+continuous 0s or 1s. If the second highest bit of the word is 1, then it 
+represents continuous 1s, while 0 is for the continuous 0s. The remainder bits 
+represent the number of 1s/0s. For example, the above array can be represented
+as follows:
+
+\code
+array[0x7,0xc001869f,0x80036574, 0x80000]
+\endcode
+
+    which says the first word is a normal word. As the first, second and third
+    bit positions of the word are 1, it represent the input numbers (1,2,3). The
+    second word is a composite word with continuous 1s. The first bit position
+    is 32 (since the first word is a normal word), and the last position is
+    31 + x'1869f'::INT * 31 = 3100000. All the bits from 32 to 3100000 is 1, 
+    which represents the input numbers (31~310000). The third word is composite
+    word with continuous 0s. The first bit position is 3100001, and the last 
+    position is 3100000 +  x'36574'::INT * 31 = 9999980. All bits from 3100001
+    to 9999980 are 0. The last word is a normal word, the 20th bit position is 1.
+    That's means the position from  9999980 to 9999999 is zero, and the bit 
+    position 10000000 is 1 (which represent the input number 10000000). 
+    Therefore, we only need 16 bytes to represent so many input numbers. 
+    
+    The module provides the bitmap as user defined type (MADLIB_SCHEMA.bitmap). 
+
+@usage
+
+    bitmap can be constructed as follows:
+    <pre>
+    SELECT 'x1,x2 ,x3 , ..., xk'::MADLIB_SCHEMA.bitmap;
+    </pre>
+    
+    Or, it can also be casted from a integer array:
+    <pre>
+    SELECT ('{x1, x2, x3, ...xk}'::INT[])::MADLIB_SCHEMA.bitmap;
+    </pre>
+    
+    Or, it can be aggregated from a number of records:
+    <pre>
+    SELECT MADLIB_SCHEMA.bitmap_agg(tid) FROM trans_table;
+    </pre>
+    where tid is an integer column.
+    
+    Syntax reference can be found in bitmap.sql_in.
+
+    Users need to add MADLIB_SCHEMA to their search_path to use the bitmap operators
+    defined in the module.
+
+@examp
+
+Here, we will give examples on the functions we provided in this version.
+
+The following three examples show how to build a bitmap:
+
+Cast a cstring to a bitmap:
+\code
+sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap AS bitmap
+ bitmap  
+---------
+ 1~3
+\endcode
+
+Cast an integer array to a bitmap. NULLs and duplicated numbers in the array
+will be ignored.
+\code
+sql> SELECT array[1,2,3]::MADLIB_SCHEMA.bitmap AS bitmap
+ bitmap  
+---------
+ 1~3
+\endcode
+
+Aggregate integers from a table to a bitmap. NULLs and duplicated numbers in 
+the aggregate array will be ignored.
+\code
+sql> CREATE TEMP TABLE t1(id) AS SELECT generate_series(32, 62) UNION ALL
+                                 SELECT unnest(array[1,2,3,4];
+sql> SELECT MADLIB_SCHEMA.bitmap_agg(id) AS bitmap FROM t1;
+ bitmap  
+---------
+ 1~4,32~62
+\endcode
+
+The following two examples show how we use the bitwise operations: | and &.
+\code
+sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap | '4,3,2'::MADLIB_SCHEMA.bitmap AS bitmap_or
+ bitmap_or  
+---------
+ 1~4
+\endcode
+
+\code
+sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap & '4,3,2'::MADLIB_SCHEMA.bitmap AS bitmap_and
+ bitmap_and  
+---------
+ 2,3
+\endcode
+
+
+The following two examples show the CASTs for the bitmap:
+\code
+sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap::INT[] AS intcast
+ intcast
+---------
+ {7}
+\endcode
+
+\code
+sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap::varbit AS varbitcast
+            varbitcast             
+-----------------------------------
+ 111000000000000000000000000000001
+\endcode
+
+
+@sa File bitmap.sql_in documenting the SQL functions.
+
+*/
+
 
 m4_include(`SQLCommon.m4')
 

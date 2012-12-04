@@ -55,6 +55,10 @@ bitmap_agg_sfunc
 (
     AnyType &args
 ){
+    madlib_assert((!args[1].isNull()) && (!args[2].isNull()),
+            std::invalid_argument("the input parameter input_bit and size_per_add"
+                    "should not be null"));
+
     int64_t input_bit = args[1].getAs<int64_t>();
     int size_per_add = args[2].getAs<int32_t>();
     AnyType state = args[0];
@@ -237,6 +241,9 @@ array_return_bitmap
     AnyType &args
 ){
     ArrayHandle<int64_t> handle = args[0].getAs< ArrayHandle<int64_t> >();
+    madlib_assert(!ARR_HASNULL(handle.array()),
+            std::invalid_argument("the input array should not contains null"));
+
     const int64_t* array = handle.ptr();
     int size = handle.size();
 
