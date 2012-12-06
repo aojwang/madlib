@@ -12,17 +12,17 @@
 
 
 /**
-@addtogroup grp_svec
+@addtogroup grp_bitmap
 
 @about
 
-This module implements two bitmap data types named MADLIB_SCHEMA.bitmap,  
+This module implements a user defined type, named MADLIB_SCHEMA.bitmap,  
 which gives compressed storage for input numbers and better time performance
 for the bitwise operations on bitmap. 
 
-There are lots of data mining algorithms use a bitmap to represent the input
+There are lots of data mining algorithms use the bitmap to represent the input
 training data, and later do some bitwise operations on the bitmap. For example,
-in Apriori, we represent the transaction IDs for each item as a bitmap. Then if 
+in Apriori, we represent the transaction IDs for each item as a bitmap. If 
 we want to get the common transaction IDs for two items, then a simple "and"
 operation can achieve the goal. Even more, we can use the bitmap to represent 
 the itemsets in each iteration. That is, we can retrieve the itemsets in the
@@ -44,25 +44,26 @@ for a numerous of input data. the underlying implementation for the bitmap is
 an INT4 array. Each element in the array is called as a word, which is 4 bytes. 
 There are two types of word: normal word and composite word. If the highest bit 
 of a word is 0, the it's a normal word. Otherwise, it's a composite word. 
-In a normal word, it has 31 bits except for the highest bit and we use the 
+For a normal word, it has 31 bits except for the highest bit. We use the 
 position, starts from 1, of the bit in the word to represent a unique input data. 
 Therefore, a normal word can represent 31 unique input data. Say, a normal 
 word 7, which means the input number is 1,2,3. A composite word can represent 
 continuous 0s or 1s. If the second highest bit of the word is 1, then it 
 represents continuous 1s, while 0 is for the continuous 0s. The remainder bits 
 represent the number of 1s/0s. For example, the above array can be represented
-as follows:
+as follows (we use the hexadecimal to represent each element):
 
 \code
-array[0x7,0xc001869f,0x80036574, 0x80000]
+array[0x5, 0x7,0xc001869f,0x80036574, 0x80000]
 \endcode
 
-    which says the first word is a normal word. As the first, second and third
-    bit positions of the word are 1, it represent the input numbers (1,2,3). The
-    second word is a composite word with continuous 1s. The first bit position
+    The first element indicates the number of elements in the array. 
+    The second word is a normal word. As the first, second and third bit 
+    positions of the word are 1, it represents the input numbers (1,2,3).
+    The third word is a composite word with continuous 1s. The first bit position
     is 32 (since the first word is a normal word), and the last position is
     31 + x'1869f'::INT * 31 = 3100000. All the bits from 32 to 3100000 is 1, 
-    which represents the input numbers (31~310000). The third word is composite
+    which represents the input numbers (31~310000). The Fourth word is composite
     word with continuous 0s. The first bit position is 3100001, and the last 
     position is 3100000 +  x'36574'::INT * 31 = 9999980. All bits from 3100001
     to 9999980 are 0. The last word is a normal word, the 20th bit position is 1.
@@ -70,11 +71,11 @@ array[0x7,0xc001869f,0x80036574, 0x80000]
     position 10000000 is 1 (which represent the input number 10000000). 
     Therefore, we only need 16 bytes to represent so many input numbers. 
     
-    The module provides the bitmap as user defined type (MADLIB_SCHEMA.bitmap). 
+    The module provides the bitmap as a user defined type (MADLIB_SCHEMA.bitmap). 
 
 @usage
 
-    bitmap can be constructed as follows:
+    A bitmap can be constructed as follows:
     <pre>
     SELECT 'x1,x2 ,x3 , ..., xk'::MADLIB_SCHEMA.bitmap;
     </pre>
@@ -84,20 +85,20 @@ array[0x7,0xc001869f,0x80036574, 0x80000]
     SELECT ('{x1, x2, x3, ...xk}'::INT[])::MADLIB_SCHEMA.bitmap;
     </pre>
     
-    Or, it can be aggregated from a number of records:
+    Or, it can be aggregated from a column with integer type:
     <pre>
     SELECT MADLIB_SCHEMA.bitmap_agg(tid) FROM trans_table;
     </pre>
-    where tid is an integer column.
+    where tid is the column with integer type.
     
     Syntax reference can be found in bitmap.sql_in.
 
-    Users need to add MADLIB_SCHEMA to their search_path to use the bitmap operators
-    defined in the module.
+    Users need to add MADLIB_SCHEMA to their search_path to use the bitmap 
+    operators defined in the module.
 
 @examp
 
-Here, we will give examples on the functions we provided in this version.
+Here, we will give examples for the functions we provided in this version.
 
 The following three examples show how to build a bitmap:
 
@@ -109,8 +110,8 @@ sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap AS bitmap
  1~3
 \endcode
 
-Cast an integer array to a bitmap. NULLs and duplicated numbers in the array
-will be ignored.
+Cast an integer array to a bitmap. NULLs are not allowed. The duplicated 
+numbers in the array will be ignored.
 \code
 sql> SELECT array[1,2,3]::MADLIB_SCHEMA.bitmap AS bitmap
  bitmap  
@@ -171,9 +172,9 @@ m4_include(`SQLCommon.m4')
 CREATE TYPE MADLIB_SCHEMA.bitmap;
 
 /*
- * @brief the in function for the bitmap data type
+ * @brief the 'in' function for the bitmap data type
  *
- * @param args[0]   the input string, which should be split by a comma.
+ * @param args[0]   the input string, which must be split by a comma.
  *
  * @return the bitmap representing the input string
  */
@@ -184,7 +185,7 @@ LANGUAGE C IMMUTABLE STRICT;
 
 
 /*
- * @brief the out function for the bitmap data type.
+ * @brief the 'out' function for the bitmap data type.
  *
  * @param args[0]   the bitmap
  *
@@ -204,16 +205,17 @@ CREATE TYPE MADLIB_SCHEMA.bitmap (
    alignment = int4
 );
 
+
 /*
  * @brief the step function for aggregating the input numbers to
- * a compressed bitmap.
+ *        a compressed bitmap.
  *
- * @param args[0]   an array indicating the state
+ * @param args[0]   the array indicating the state
  * @param args[1]   the input number
  * @param args[2]   the number of empty elements will be dynamically
- *                  added to the state array
+ *                  added to the state array. The default values is 16.
  *
- * @return an array indicating the state after inserted the input number.
+ * @return an array indicating the state after inserting the input number.
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_agg_sfunc
 (
@@ -231,10 +233,10 @@ IMMUTABLE;
  * @brief the step function for aggregating the input numbers to
  * a compressed bitmap.
  *
- * @param args[0]   an array indicating the state
+ * @param args[0]   The array indicating the state
  * @param args[1]   the input number
  *
- * @return an array indicating the state after inserted the input number.
+ * @return an array indicating the state after inserting the input number.
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_agg_sfunc
 (
@@ -250,8 +252,8 @@ IMMUTABLE;
 /*
  * @brief the pre-function for the bitmap aggregation.
  *
- * @param args[0]   an array of the first state
- * @param args[1]   an array of the second state
+ * @param args[0]   the first state
+ * @param args[1]   the second state
  *
  * @return an array of merging the first state and the second state.
  */
@@ -370,6 +372,7 @@ IMMUTABLE STRICT;
  * @param args[0]   the bitmap
  *
  * @return the array representation for the bitmap.
+ * @note the first element is the array size
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_return_array
 (
@@ -387,6 +390,7 @@ IMMUTABLE STRICT;
  * @param args[0]   the bitmap
  *
  * @return the varbit representation for the bitmap.
+ * @note we should read the bits from left to right
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_return_varbit
 (
@@ -447,7 +451,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_eq
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
 LANGUAGE C
-IMMUTABLE;
+IMMUTABLE STRICT;
 
 
 /*
@@ -466,7 +470,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_neq
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
 LANGUAGE C
-IMMUTABLE;
+IMMUTABLE STRICT;
 
 
 /*
@@ -476,6 +480,9 @@ IMMUTABLE;
  * @param args[1]   the second bitmap array
  *
  * @return the result of args[0] > args[1].
+ * @note it doesn't make sense to compare two bitmap. 
+ *       However, the btree index need this operation. 
+ *       Here, we just simple compare the two bitmap arrays
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_gt
 (
@@ -485,7 +492,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_gt
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
 LANGUAGE C
-IMMUTABLE;
+IMMUTABLE STRICT;
 
 
 /*
@@ -495,6 +502,9 @@ IMMUTABLE;
  * @param args[1]   the second bitmap array
  *
  * @return the result of args[0] < args[1].
+ * @note it doesn't make sense to compare two bitmap. 
+ *       However, the btree index need this operation. 
+ *       Here, we just simple compare the two bitmap arrays
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_lt
 (
@@ -504,7 +514,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_lt
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
 LANGUAGE C
-IMMUTABLE;
+IMMUTABLE STRICT;
 
 
 /*
@@ -514,6 +524,9 @@ IMMUTABLE;
  * @param args[1]   the second bitmap array
  *
  * @return the result of args[0] >= args[1].
+ * @note it doesn't make sense to compare two bitmap. 
+ *       However, the btree index need this operation. 
+ *       Here, we just simple compare the two bitmap arrays
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_ge
 (
@@ -523,7 +536,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_ge
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
 LANGUAGE C
-IMMUTABLE;
+IMMUTABLE STRICT;
 
 
 /*
@@ -533,6 +546,9 @@ IMMUTABLE;
  * @param args[1]   the second bitmap array
  *
  * @return the result of args[0] <= args[1].
+ * @note it doesn't make sense to compare two bitmap. 
+ *       However, the btree index need this operation. 
+ *       Here, we just simple compare the two bitmap arrays
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_le
 (
@@ -542,7 +558,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_le
 RETURNS BOOL
 AS 'MODULE_PATHNAME'
 LANGUAGE C
-IMMUTABLE;
+IMMUTABLE STRICT;
 
 
 /*
@@ -552,6 +568,9 @@ IMMUTABLE;
  * @param args[1]   the second bitmap array
  *
  * @return 0 for equality; 1 for greater than; and -1 for less than.
+ * @note it doesn't make sense to compare two bitmap. 
+ *       However, the btree index need this operation. 
+ *       Here, we just simple compare the two bitmap arrays
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_cmp
 (
@@ -561,32 +580,25 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_cmp
 RETURNS INT
 AS 'MODULE_PATHNAME'
 LANGUAGE C
-IMMUTABLE;
+IMMUTABLE STRICT;
 
 
-CREATE OPERATOR MADLIB_SCHEMA.= (
+CREATE OPERATOR MADLIB_SCHEMA.< (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
-    procedure = MADLIB_SCHEMA.bitmap_eq,
-    commutator = operator(MADLIB_SCHEMA.=) ,
-    negator = operator(MADLIB_SCHEMA.<>) ,
-    restrict = eqsel, join = eqjoinsel
+    procedure = MADLIB_SCHEMA.bitmap_lt,
+    commutator = operator(MADLIB_SCHEMA.>) ,
+    negator = operator(MADLIB_SCHEMA.>=) ,
+    restrict = scalarltsel, join = scalarltjoinsel
 );
 
-CREATE OPERATOR MADLIB_SCHEMA.== (
+CREATE OPERATOR MADLIB_SCHEMA.<= (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
-    procedure = MADLIB_SCHEMA.bitmap_eq,
-    commutator = operator(MADLIB_SCHEMA.=) ,
-    negator = operator(MADLIB_SCHEMA.<>) ,
-    restrict = eqsel, join = eqjoinsel
+    procedure = MADLIB_SCHEMA.bitmap_le,
+    commutator = operator(MADLIB_SCHEMA.>=) ,
+    negator = operator(MADLIB_SCHEMA.>) ,
+    restrict = scalarltsel, join = scalarltjoinsel
 );
 
-CREATE OPERATOR MADLIB_SCHEMA.<> (
-    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
-    procedure = MADLIB_SCHEMA.bitmap_neq,
-    commutator = operator(MADLIB_SCHEMA.<>) ,
-    negator = operator(MADLIB_SCHEMA.=) ,
-    restrict = eqsel, join = eqjoinsel
-);
 
 CREATE OPERATOR MADLIB_SCHEMA.> (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
@@ -605,20 +617,22 @@ CREATE OPERATOR MADLIB_SCHEMA.>= (
     restrict = scalargtsel, join = scalargtjoinsel
 );
 
-CREATE OPERATOR MADLIB_SCHEMA.< (
+
+CREATE OPERATOR MADLIB_SCHEMA.<> (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
-    procedure = MADLIB_SCHEMA.bitmap_lt,
-    commutator = operator(MADLIB_SCHEMA.>) ,
-    negator = operator(MADLIB_SCHEMA.>=) ,
-    restrict = scalarltsel, join = scalarltjoinsel
+    procedure = MADLIB_SCHEMA.bitmap_neq,
+    commutator = operator(MADLIB_SCHEMA.<>) ,
+    negator = operator(MADLIB_SCHEMA.=) ,
+    restrict = eqsel, join = eqjoinsel
 );
 
-CREATE OPERATOR MADLIB_SCHEMA.<= (
+
+CREATE OPERATOR MADLIB_SCHEMA.= (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
-    procedure = MADLIB_SCHEMA.bitmap_le,
-    commutator = operator(MADLIB_SCHEMA.>=) ,
-    negator = operator(MADLIB_SCHEMA.>) ,
-    restrict = scalarltsel, join = scalarltjoinsel
+    procedure = MADLIB_SCHEMA.bitmap_eq,
+    commutator = operator(MADLIB_SCHEMA.=) ,
+    negator = operator(MADLIB_SCHEMA.<>) ,
+    restrict = eqsel, join = eqjoinsel
 );
 
 

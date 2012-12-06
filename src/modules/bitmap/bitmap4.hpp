@@ -2,6 +2,8 @@
  *
  * @file bitmap.hpp
  *
+ * The functions' declarations for the plc functions in bitmap.sql_in
+ *
  *//* ----------------------------------------------------------------------- */
 
 

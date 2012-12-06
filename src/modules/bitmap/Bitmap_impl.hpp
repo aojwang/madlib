@@ -9,8 +9,8 @@ template <typename T>
 inline
 Bitmap<T>::Bitmap
 (
-    int capacity /* = 1 */,
-    int size_per_add /* = 2 */
+    int capacity,
+    int size_per_add
 ) :
     m_bmArray(NULL), m_bitmap(NULL), m_size(1), m_capacity(capacity),
     m_size_per_add(size_per_add), m_bitmap_updated(true),
@@ -48,7 +48,7 @@ inline
 Bitmap<T>::Bitmap
 (
     ArrayHandle<T> handle,
-    int size_per_add /* = 2 */
+    int size_per_add /* = DEFAULT_SIZE_PER_ADD */
 ) :
     m_bmArray(const_cast<ArrayType*>(handle.array())),
     m_bitmap(const_cast<T*>(handle.ptr())), m_size(handle[0]),
@@ -629,7 +629,7 @@ Bitmap<T>
 Bitmap<T>::operator | (Bitmap<T>& rhs){
     ArrayType* res = bitwise_proc
             (rhs, &Bitmap<T>::bitwise_or, &Bitmap<T>::or_postproc);
-    return res ? Bitmap(res, *this) : Bitmap();
+    return res ? Bitmap(res, *this) : EMTYP_BITMAP;
 }
 
 
@@ -670,7 +670,7 @@ Bitmap<T>
 Bitmap<T>::operator & (Bitmap<T>& rhs){
     ArrayType* res = bitwise_proc
             (rhs, &Bitmap<T>::bitwise_and, &Bitmap<T>::and_postproc);
-    return res ? Bitmap(res, *this) : Bitmap();
+    return res ? Bitmap(res, *this) : EMTYP_BITMAP;
 }
 
 /**
@@ -829,7 +829,7 @@ Bitmap<T>::to_string(){
     int64_t* result = new int64_t[size + 1];
     nonzero_positions(result);
 
-    // here, we shouldn't align the size, don't use BM_ALIGN_ALLOC0
+    // here, we shouldn't align the size, mustn't use BM_ALIGN_ALLOC0
     char* res = (char*) BM_ALLOC0(size * MAXBITSOFINT64 * sizeof(char));
     char* pstr = res;
     int j = 0;

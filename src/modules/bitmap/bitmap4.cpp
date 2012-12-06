@@ -77,6 +77,7 @@ int4array_return_bitmap::run(AnyType &args){
     RETURN_BITMAP_NULL((BitmapUtil::array_return_bitmap<int32_t, int32_t>(args)));
 }
 
+
 /**
  * @brief the in function for the bitmap data type
  */
@@ -130,6 +131,7 @@ bitmap_neq::run(AnyType &args){
     RETURN_BASE(!BitmapUtil::bitmap_eq<int32_t>(args));
 }
 
+
 /**
  * @brief the implementation of > operator
  */
@@ -138,6 +140,7 @@ bitmap_gt::run(AnyType &args){
     RETURN_BASE(BitmapUtil::bitmap_gt<int32_t>(args));
 }
 
+
 /**
  * @brief the implementation of < operator
  */
@@ -145,6 +148,7 @@ AnyType
 bitmap_lt::run(AnyType &args){
     RETURN_BASE(!BitmapUtil::bitmap_ge<int32_t>(args));
 }
+
 
 /**
  * @brief the implementation of >= operator
@@ -162,6 +166,7 @@ AnyType
 bitmap_le::run(AnyType &args){
     RETURN_BASE(!BitmapUtil::bitmap_gt<int32_t>(args));
 }
+
 
 /**
  * @brief compare the two bitmaps

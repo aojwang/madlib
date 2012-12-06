@@ -435,21 +435,17 @@ FunctionInformation::getReturnType(FunctionCallInfo fcinfo) {
             "FunctionInformation::getReturnType()."));
 
     Oid returnType = rettype;
-    if (rettype != RECORDOID &&
+    if (rettype != RECORDOID && rettype != CSTRINGOID &&
         mSysInfo->typeInformation(rettype)->type == TYPTYPE_PSEUDO) {
         // The function is polymorphic, and the result type thus depends on the
         // expression parse tree. Note that the condition in the if-clause is
         // sufficient condition for cachedFuncInfo->polymorphic, but not a
         // necessary condition. (A function could have input arguments with
         // pseudo types, but a fixed return type.)
-        /*
-         * this is wrong logic here, we do the assignment for polymorphic
-         * using the input parameters. However, here we use it to check with
-         * return type. NOTE: we need to rewrite the logic
         madlib_assert(polymorphic,
             std::logic_error("Logical error: Function returns non-record "
                 "pseudo type but is not polymorphic."));
-        */
+
         // This is not a composite type, so no need to pass anything for
         // resultTupleDesc
         madlib_get_call_result_type(fcinfo, &returnType,

@@ -93,12 +93,11 @@ private:
     }
 #define WITH_TO_CXX_CONVERSION(_convertToCXX) \
     static value_type toCXXType(Datum value, bool needMutableClone, \
-        SystemInformation* sysInfo, Oid _oid = InvalidOid) { \
+        SystemInformation* sysInfo) { \
         \
         (void) value; \
         (void) needMutableClone; \
         (void) sysInfo; \
-        (void) _oid; \
         return _convertToCXX; \
     }
 #define WITH_BIND_TO_STREAM(_bindToStream) \

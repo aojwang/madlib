@@ -10,6 +10,7 @@ BEGIN
 END
 $$ LANGUAGE PLPGSQL IMMUTABLE;
 
+
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.test_bitmap_agg
 (
 )
@@ -22,10 +23,19 @@ BEGIN
     
     EXECUTE 'select textin(MADLIB_SCHEMA.bitmap_out(MADLIB_SCHEMA.bitmap_agg(id::BIGINT, 4))) = ''1~5,1000~10000,10008'' from t1' INTO result;
     PERFORM MADLIB_SCHEMA.test_assert(result);
-
+    
+    EXECUTE 'select textin(MADLIB_SCHEMA.bitmap_out(MADLIB_SCHEMA.bitmap_agg(id::BIGINT))) = ''1~5,1000~10000,10008'' from t1' INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result);
+    
     EXECUTE 'select MADLIB_SCHEMA.bitmap_agg(id::BIGINT, 4)::INT[] = ARRAY[6,31,-2147483617,2147483520,-1073741535,33816575]::INT[] from t1' INTO result;
     PERFORM MADLIB_SCHEMA.test_assert(result);
-        
+
+    EXECUTE 'select MADLIB_SCHEMA.bitmap_agg(id::BIGINT)::INT[] = ARRAY[6,31,-2147483617,2147483520,-1073741535,33816575]::INT[] from t1' INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result);
+    
+    EXECUTE 'select MADLIB_SCHEMA.bitmap_agg(id::BIGINT)::INT[] = MADLIB_SCHEMA.bitmap_agg(id::BIGINT, 4)::INT[] from t1' INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result);    
+            
     RETURN 'PASS';
 END
 $$ LANGUAGE PLPGSQL; 
@@ -194,13 +204,14 @@ END
 $$ LANGUAGE PLPGSQL; 
 
 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.test_bitmap_eq
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.test_bitmap_eq_neq
 (
 )
 RETURNS TEXT AS $$
 DECLARE
     data1   TEXT[] := ARRAY['1,31,32,93,94', '1,2,3,4,5,6', '1,2,4,5,7,8,9,10,11', '1,2,100000'];
     data2   TEXT[] := ARRAY['1,31,32,93,94', '1,2,3,4,5,6', '1,2,4,5,7,8,9,10,11', '1,2,100000'];
+    data3   TEXT[] := ARRAY['1,31,32,93,95', '1,2,4,5,6,7', '2,3,2,3,4,4,4,1', '1,2,4'];
     types   TEXT[] := ARRAY['bitmap'];
     result  BOOL;
     i       INT;
@@ -215,12 +226,126 @@ BEGIN
                     ';' ;
             EXECUTE stmt INTO result;
             PERFORM MADLIB_SCHEMA.test_assert(result); 
+
+            stmt = 'select ''' || 
+                    data1[i] || '''::MADLIB_SCHEMA.' || types[k] || ' <> ''' || 
+                    data3[i] || '''::MADLIB_SCHEMA.' || types[k] ||  
+                    ';' ;
+            EXECUTE stmt INTO result;
+            PERFORM MADLIB_SCHEMA.test_assert(result); 
+                        
         END LOOP;
     END LOOP;
     
     RETURN 'PASS';
 END
 $$ LANGUAGE PLPGSQL; 
+
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.test_bitmap_lt_gt
+(
+)
+RETURNS TEXT AS $$
+DECLARE
+    data1   TEXT[] := ARRAY['1,31,32,93,94', '1,2,3,4,5,6', '33'];
+    data2   TEXT[] := ARRAY['1,31,32,93,94,96', '1,2,3,4,5,6,7', '1,2,3,4,5,31,32'];
+    types   TEXT[] := ARRAY['bitmap'];
+    result  BOOL;
+    i       INT;
+    k       INT;
+    stmt    TEXT;
+BEGIN
+    FOR k in 1..array_upper(types, 1) LOOP
+        FOR i in 1..array_upper(data1, 1) LOOP
+            stmt = 'select ''' || 
+                    data1[i] || '''::MADLIB_SCHEMA.' || types[k] || ' < ''' || 
+                    data2[i] || '''::MADLIB_SCHEMA.' || types[k] ||  
+                    ';' ;
+            EXECUTE stmt INTO result;
+            PERFORM MADLIB_SCHEMA.test_assert(result); 
+            
+            stmt = 'select ''' || 
+                    data2[i] || '''::MADLIB_SCHEMA.' || types[k] || ' > ''' || 
+                    data1[i] || '''::MADLIB_SCHEMA.' || types[k] ||  
+                    ';' ;
+            EXECUTE stmt INTO result;
+            PERFORM MADLIB_SCHEMA.test_assert(result); 
+        END LOOP;
+    END LOOP;
+
+    stmt = 'SELECT ARRAY(SELECT generate_series(1,62) UNION ALL
+            SELECT generate_series(63, 66))::INT[]::MADLIB_SCHEMA.bitmap >
+            ARRAY(SELECT generate_series(63, 66))::INT[]::MADLIB_SCHEMA.bitmap';
+    EXECUTE stmt INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result); 
+    
+    stmt = 'SELECT ARRAY(SELECT generate_series(63, 66))::INT[]::MADLIB_SCHEMA.bitmap <
+            ARRAY(SELECT generate_series(1,62) UNION ALL
+                        SELECT generate_series(63, 66))::INT[]::MADLIB_SCHEMA.bitmap';
+    EXECUTE stmt INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result); 
+    
+    RETURN 'PASS';
+END
+$$ LANGUAGE PLPGSQL;
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.test_bitmap_le_ge
+(
+)
+RETURNS TEXT AS $$
+DECLARE
+    data1   TEXT[] := ARRAY['1,31,32,93,94', '1,2,3,4,5,6', '1,2,3,4,5,31,32'];
+    data2   TEXT[] := ARRAY['1,31,32,93,94', '1,2,3,4,5,6,7', '1,2,3,4,5,31,33'];
+    types   TEXT[] := ARRAY['bitmap'];
+    result  BOOL;
+    i       INT;
+    k       INT;
+    stmt    TEXT;
+BEGIN
+    FOR k in 1..array_upper(types, 1) LOOP
+        FOR i in 1..array_upper(data1, 1) LOOP
+            stmt = 'select ''' || 
+                    data1[i] || '''::MADLIB_SCHEMA.' || types[k] || ' <= ''' || 
+                    data2[i] || '''::MADLIB_SCHEMA.' || types[k] ||  
+                    ';' ;
+            EXECUTE stmt INTO result;
+            PERFORM MADLIB_SCHEMA.test_assert(result); 
+            
+            stmt = 'select ''' || 
+                    data2[i] || '''::MADLIB_SCHEMA.' || types[k] || ' >= ''' || 
+                    data1[i] || '''::MADLIB_SCHEMA.' || types[k] ||  
+                    ';' ;
+            EXECUTE stmt INTO result;
+            PERFORM MADLIB_SCHEMA.test_assert(result); 
+        END LOOP;
+    END LOOP;
+    
+    RETURN 'PASS';
+END
+$$ LANGUAGE PLPGSQL;
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.test_array_return_bitmap
+(
+)
+RETURNS TEXT AS $$
+DECLARE
+    stmt    TEXT;
+    result  BOOL;
+BEGIN
+    stmt = 'SELECT ARRAY(SELECT generate_series(1,1000) UNION ALL
+            SELECT generate_series(2000, 10000))::INT8[]::MADLIB_SCHEMA.bitmap =
+            ARRAY(SELECT generate_series(2000, 10000) UNION ALL
+            SELECT generate_series(1,1000))::INT[]::MADLIB_SCHEMA.bitmap';
+    EXECUTE stmt INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result); 
+    
+    RETURN 'PASS';
+END
+$$ LANGUAGE PLPGSQL;
+
 
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.test_bitmap_nonzero_positions
@@ -388,13 +513,46 @@ END
 $$ LANGUAGE PLPGSQL; 
 
 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.test_operator_class
+(
+)
+RETURNS TEXT AS $$
+DECLARE
+    result  BOOL;
+BEGIN
+    EXECUTE 'DROP TABLE IF EXISTS t1';
+    EXECUTE 'CREATE TEMP TABLE t1(id SERIAL, bm MADLIB_SCHEMA.bitmap)';
+    EXECUTE 'INSERT INTO t1(bm) 
+            SELECT ARRAY(SELECT generate_series(1,20))::MADLIB_SCHEMA.bitmap 
+            UNION ALL
+            SELECT ARRAY(SELECT generate_series(32, 40))::MADLIB_SCHEMA.bitmap
+            UNION ALL 
+            SELECT ARRAY(SELECT generate_series(63, 80))::MADLIB_SCHEMA.bitmap
+            UNION ALL 
+            SELECT ARRAY(SELECT generate_series(200, 1000))::MADLIB_SCHEMA.bitmap
+            UNION ALL
+            SELECT ARRAY(SELECT generate_series(32, 40))::MADLIB_SCHEMA.bitmap';
+        
+    EXECUTE 'SELECT max(cnt) = 2 FROM 
+            (SELECT bm, count(id) as cnt FROM t1 GROUP BY bm) t'
+    INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result); 
+    
+    RETURN 'PASS';
+END
+$$ LANGUAGE PLPGSQL; 
+
 SELECT MADLIB_SCHEMA.test_bitmap_agg();
 SELECT MADLIB_SCHEMA.test_bitmap_in_out();
 SELECT MADLIB_SCHEMA.test_bitmap_or();
 SELECT MADLIB_SCHEMA.test_bitmap_and();
-SELECT MADLIB_SCHEMA.test_bitmap_eq();
+SELECT MADLIB_SCHEMA.test_bitmap_eq_neq();
+SELECT MADLIB_SCHEMA.test_bitmap_lt_gt();
+SELECT MADLIB_SCHEMA.test_bitmap_le_ge();
+SELECT MADLIB_SCHEMA.test_array_return_bitmap();
 SELECT MADLIB_SCHEMA.test_bitmap_nonzero_positions();
 SELECT MADLIB_SCHEMA.test_bitmap_nonzero_count();
 SELECT MADLIB_SCHEMA.test_bitmap_return_array();
 SELECT MADLIB_SCHEMA.test_bitmap_return_varbit();
+SELECT MADLIB_SCHEMA.test_operator_class();
 

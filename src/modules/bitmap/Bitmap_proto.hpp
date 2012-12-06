@@ -12,6 +12,9 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 #define INT64FORMAT  "%lld"
 #define MAXBITSOFINT64   25
 
+#define DEFAULT_SIZE_PER_ADD 16
+#define EMTYP_BITMAP Bitmap(1, DEFAULT_SIZE_PER_ADD)
+
 // the following macros will be used to calculate the number of 1s in an integer
 #define BM_POW(c, T) ((T)1<<(c))
 #define BM_MASK(c, T) (((T)-1) / (BM_POW(BM_POW(c, T), T) + 1))
@@ -20,10 +23,10 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 // align the 'val' with 'align' length
 #define BM_ALIGN(val, align) ((((val) + (align) - 1) / (align)) * (align))
 
-// does the composite word represent continuous 1
+// does the composite word represent continuous 1s
 #define BM_COMPWORD_ONE(val) (((val) & (m_wordcnt_mask + 1)) > 0)
+// does the composite word represent continuous 0s
 #define BM_COMPWORD_ZERO(val) (((val) & (m_wordcnt_mask + 1)) == 0)
-
 
 // the two composite words are the same sign?
 #define BM_SAME_SIGN(lhs, rhs) (((lhs) < 0) && ((rhs) < 0) && \
@@ -103,13 +106,13 @@ class Bitmap{
 
 public:
     //ctor
-    Bitmap(int capacity = 1, int size_per_add = 2);
+    Bitmap(int capacity, int size_per_add);
 
     //ctor
     Bitmap(ArrayType* arr, Bitmap& rhs);
 
     //ctor
-    Bitmap(ArrayHandle<T> handle, int size_per_add = 2);
+    Bitmap(ArrayHandle<T> handle, int size_per_add = DEFAULT_SIZE_PER_ADD);
 
     //ctor
     Bitmap(Bitmap& rhs);

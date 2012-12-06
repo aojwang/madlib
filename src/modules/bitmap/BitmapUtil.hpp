@@ -14,9 +14,8 @@ namespace bitmap {
 using madlib::dbconnector::postgres::TypeTraits;
 using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
-
 /**
- * @brief This class encapsulate the interfaces for manipulate the bitmap
+ * @brief This class encapsulate the interfaces for manipulate the bitmap.
  *        All functions are static.
  *
  */
@@ -27,12 +26,12 @@ public:
 
 /**
  * @brief the step function for aggregating the input numbers to
- * a compressed bitmap.
+ *        a compressed bitmap.
  *
- * @param args[0]   an array indicating the state
+ * @param args[0]   the array indicating the state
  * @param args[1]   the input number
  * @param args[2]   the number of empty elements will be dynamically
- *                  added to the state array
+ *                  added to the state array. The default value is 16
  *
  * @return an array indicating the state after inserted the input number.
  * @note the bitmap(UDT) uses integer array as underlying implementation. To
@@ -57,12 +56,16 @@ bitmap_agg_sfunc
     int64_t input_bit = args[1].getAs<int64_t>();
 
     // the default value for this parameter
-    int size_per_add = 16;
+    int size_per_add = DEFAULT_SIZE_PER_ADD;
     if (3 == args.numFields()){
         madlib_assert(!args[2].isNull(),
                 std::invalid_argument("the input parameter size_per_add"
                         "should not be null"));
         size_per_add = args[2].getAs<int32_t>();
+        madlib_assert(size_per_add > 1,
+                std::invalid_argument("the input parameter size_per_add"
+                        "should not greater than 1"));
+
     }
 
     AnyType state = args[0];
@@ -82,8 +85,8 @@ bitmap_agg_sfunc
 /**
  * @brief the pre-function for the bitmap aggregation.
  *
- * @param args[0]   an array of the first state
- * @param args[1]   an array of the second state
+ * @param args[0]   the first state
+ * @param args[1]   the second state
  *
  * @return an array of merging the first state and the second state.
  * @note the bitmap(UDT) uses integer array as underlying implementation. To
@@ -254,9 +257,7 @@ array_return_bitmap
     if (0 == size)
         return NULL;
 
-    int bsize = (size >> 5) / 10;
-    bsize = bsize < 2 ? 2 : bsize;
-    Bitmap<T> bitmap(bsize, bsize);
+    Bitmap<T> bitmap(DEFAULT_SIZE_PER_ADD, DEFAULT_SIZE_PER_ADD);
 
     for (int i = 0; i < size; ++i){
         bitmap.insert((int64_t)array[i]);
@@ -447,10 +448,16 @@ bitmap_cmp_internal
     const T* lhs = (args[0].getAs< ArrayHandle<T> >(false)).ptr();
     const T* rhs = (args[1].getAs< ArrayHandle<T> >(false)).ptr();
 
-    bool res = (0 == memcmp((const void*)lhs, (const void*)rhs,
-                        lhs[0] * sizeof(T)));
-    return res ? EQ :
-            lhs[0] > rhs[0] ? GT : LT;
+    int size = (lhs[0] > rhs[0]) ? rhs[0] - 1 : lhs[0] - 1;
+    int res = memcmp(lhs + 1, rhs + 1,
+                     size * sizeof(T));
+
+    if (0 == res){
+        res = memcmp(lhs, rhs, sizeof(T));
+    }
+
+    return (0 == res) ? EQ :
+                (res < 0) ? LT : GT;
 }
 
 }; // class BitmapUtil
