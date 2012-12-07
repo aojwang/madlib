@@ -36,15 +36,20 @@ public:
         bool inForceLazyConversionToDatum = false);
 
     // for some user defined types, the underlying representation is
-    // the basic type, and we want to use the type OID to retrieve the
-    // argument. If we call getAs(), then it can't pass the type OID
-    // assertion (mTypeID == TypeTraits<T>::oid). For example, the underlying
-    // representation for bitmap is an array, and we use PG_GETARG_ARRAYTYPE_P
-    // to retrieve the arguments.
+    // the basic type, and we want to use that type's OID to retrieve the
+    // argument. If we call getAsDatum(), then it can't pass the type OID
+    // assertion (mTypeID == TypeTraits<T>::oid). Therefore, we should give
+    // the invoker to set the Oid of the type. For example, the UDT bitmap
+    // use array as underlying implementation.
     template <typename T>
     AnyType(const T& inValue, Oid _oid,
              bool inForceLazyConversionToDatum = false);
 
+    // if you don't want to copy the mutable TypeTraits, set isCloneMutable to
+    // false. For example,thes state array of the aggregate step/pre/final
+    // function; if you don't want to check the type of the argument, set
+    // isCheckType to false. For example, a UDT use a basic type as the
+    // underlying implementation.
     template <typename T> T getAs(bool isCheckType = true, bool isCloneMutable = true) const;
 
     AnyType operator[](uint16_t inID) const;

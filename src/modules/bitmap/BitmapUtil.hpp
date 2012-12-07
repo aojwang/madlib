@@ -438,13 +438,6 @@ bitmap_cmp_internal
 (
     AnyType &args
 ){
-    if (args[0].isNull() & args[1].isNull())
-        return EQ;
-    if (args[0].isNull() && !args[1].isNull())
-        return LT;
-    if (!args[0].isNull() && args[1].isNull())
-        return GT;
-
     const T* lhs = (args[0].getAs< ArrayHandle<T> >(false)).ptr();
     const T* rhs = (args[1].getAs< ArrayHandle<T> >(false)).ptr();
 
@@ -456,8 +449,7 @@ bitmap_cmp_internal
         res = memcmp(lhs, rhs, sizeof(T));
     }
 
-    return (0 == res) ? EQ :
-                (res < 0) ? LT : GT;
+    return (0 == res) ? EQ : ((res < 0) ? LT : GT);
 }
 
 }; // class BitmapUtil
