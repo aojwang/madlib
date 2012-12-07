@@ -10,14 +10,14 @@
 
 // the public interfaces for bitmap
 #define RETURN_BITMAP_INTERNAL(val, T) \
-            return AnyType(ArrayHandle<T>(val), InvalidOid)
+            return AnyType(ArrayHandle<T>(val), false, false)
 #define RETURN_BITMAP_NULL_INTERNAL(val, T) \
             const ArrayType* res = val; \
-            return NULL != res ? AnyType(ArrayHandle<T>(res), InvalidOid) : AnyType()
+            return NULL != res ? AnyType(ArrayHandle<T>(res), false, false) : AnyType()
 #define RETURN_ARRAY(val, T) \
-            return AnyType(ArrayHandle<T>(val))
+            return AnyType(ArrayHandle<T>(val), false, false)
 #define RETURN_BASE(val) \
-            return AnyType(val, (bool)false)
+            return AnyType(val)
 #define GETARG_MUTABLE_BITMAP_INTERNAL(arg, T) \
             ((arg).getAs< MutableArrayHandle<T> >(false, false))
 #define GETARG_CLONED_BITMAP_INTERNAL(arg, T) \

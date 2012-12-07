@@ -74,7 +74,7 @@ AnyType::AnyType(SystemInformation* inSysInfo, Datum inDatum,
  */
 template <typename T>
 inline
-AnyType::AnyType(const T& inValue, bool inForceLazyConversionToDatum)
+AnyType::AnyType(const T& inValue, bool inForceLazyConversionToDatum, bool isCheckType)
   : mContentType(Scalar),
     mContent(),
     mToDatumFn(),
@@ -86,28 +86,11 @@ AnyType::AnyType(const T& inValue, bool inForceLazyConversionToDatum)
     mTypeName(TypeTraits<T>::typeName()),
     mIsMutable(TypeTraits<T>::isMutable) {
 
-    if (inForceLazyConversionToDatum || lazyConversionToDatum()) {
-        mContent = inValue;
-        mToDatumFn = std::bind(TypeTraits<T>::toDatum, inValue);
-    } else {
-        mDatum = TypeTraits<T>::toDatum(inValue);
+    if (!isCheckType){
+        mTypeID = InvalidOid;
+        mTypeName = NULL;
     }
-}
 
-
-template <typename T>
-inline
-AnyType::AnyType(const T& inValue, Oid typeId, bool inForceLazyConversionToDatum)
-  : mContentType(Scalar),
-    mContent(),
-    mToDatumFn(),
-    mDatum(0),
-    fcinfo(NULL),
-    mSysInfo(TypeTraits<T>::toSysInfo(inValue)),
-    mTupleHeader(NULL),
-    mTypeID(typeId),
-    mTypeName(TypeTraits<T>::typeName()),
-    mIsMutable(TypeTraits<T>::isMutable) {
     if (inForceLazyConversionToDatum || lazyConversionToDatum()) {
         mContent = inValue;
         mToDatumFn = std::bind(TypeTraits<T>::toDatum, inValue);
