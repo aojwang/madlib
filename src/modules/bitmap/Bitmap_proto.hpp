@@ -10,7 +10,8 @@ namespace bitmap {
 using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
 #define INT64FORMAT  "%lld"
-#define MAXBITSOFINT64   25
+#define MAXBITSOFINT64  25
+#define BYTESIZE        8
 
 #define DEFAULT_SIZE_PER_ADD 16
 #define EMTYP_BITMAP Bitmap(1, DEFAULT_SIZE_PER_ADD)
@@ -152,12 +153,12 @@ public:
     // override the AND operation
     inline Bitmap operator & (Bitmap& rhs);
 
-    // the same with operator |, but with different return type
+    // the same with operator |, but with different return type.
     // to avoid the overhead of constructing bitmap object and ArrayHandle object,
     // this function will return ArrayType*
     inline ArrayType* op_or(Bitmap& rhs);
 
-    // the same with operator &, but with different return type
+    // the same with operator &, but with different return type.
     // to avoid the overhead of constructing bitmap object and ArrayHandle object,
     // this function will return ArrayType*
     inline ArrayType* op_and(Bitmap& rhs);

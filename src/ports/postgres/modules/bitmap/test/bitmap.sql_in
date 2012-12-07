@@ -538,6 +538,15 @@ BEGIN
     INTO result;
     PERFORM MADLIB_SCHEMA.test_assert(result); 
     
+    EXECUTE 'SELECT bm = ARRAY(SELECT generate_series(32,40))::MADLIB_SCHEMA.bitmap
+             FROM (SELECT * FROM t1 ORDER BY bm LIMIT 1) t' INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result); 
+    
+    EXECUTE 'SELECT bm = ARRAY(SELECT generate_series(1,20))::MADLIB_SCHEMA.bitmap
+             FROM (SELECT * FROM t1 ORDER BY bm DESC LIMIT 1) t' INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result);
+                     
+    
     RETURN 'PASS';
 END
 $$ LANGUAGE PLPGSQL; 

@@ -5,6 +5,7 @@ namespace madlib {
 namespace modules {
 namespace bitmap {
 
+// ctor
 template <typename T>
 inline
 Bitmap<T>::Bitmap
@@ -14,10 +15,10 @@ Bitmap<T>::Bitmap
 ) :
     m_bmArray(NULL), m_bitmap(NULL), m_size(1), m_capacity(capacity),
     m_size_per_add(size_per_add), m_bitmap_updated(true),
-    m_base(sizeof(T) * 8 - 1),
-    m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
-    m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
-    m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)){
+    m_base(sizeof(T) * BYTESIZE - 1),
+    m_wordcnt_mask(((T)1 << (sizeof(T) * BYTESIZE - 2)) - 1),
+    m_sw_zero_mask((T)1 << (sizeof(T) * BYTESIZE - 1)),
+    m_sw_one_mask((T)3 << (sizeof(T) * BYTESIZE - 2)){
     set_typInfo();
     m_bmArray = BM_CONSTRUCT_ARRAY((Datum*)NULL, capacity);
     m_bitmap = reinterpret_cast<T*>(ARR_DATA_PTR(m_bmArray));
@@ -53,10 +54,10 @@ Bitmap<T>::Bitmap
     m_bmArray(const_cast<ArrayType*>(handle.array())),
     m_bitmap(const_cast<T*>(handle.ptr())), m_size(handle[0]),
     m_capacity(handle.size()), m_size_per_add(size_per_add),
-    m_bitmap_updated(false), m_base(sizeof(T) * 8 - 1),
-    m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
-    m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
-    m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)) {
+    m_bitmap_updated(false), m_base(sizeof(T) * BYTESIZE - 1),
+    m_wordcnt_mask(((T)1 << (sizeof(T) * BYTESIZE - 2)) - 1),
+    m_sw_zero_mask((T)1 << (sizeof(T) * BYTESIZE - 1)),
+    m_sw_one_mask((T)3 << (sizeof(T) * BYTESIZE - 2)) {
     set_typInfo();
 }
 
@@ -86,10 +87,10 @@ Bitmap<T>::Bitmap
 ):
     m_bmArray(NULL), m_bitmap(NULL), m_size(1), m_capacity(8),
     m_size_per_add(8), m_bitmap_updated(false),
-    m_base(sizeof(T) * 8 - 1),
-    m_wordcnt_mask(((T)1 << (sizeof(T) * 8 - 2)) - 1),
-    m_sw_zero_mask((T)1 << (sizeof(T) * 8 - 1)),
-    m_sw_one_mask((T)3 << (sizeof(T) * 8 - 2)){
+    m_base(sizeof(T) * BYTESIZE - 1),
+    m_wordcnt_mask(((T)1 << (sizeof(T) * BYTESIZE - 2)) - 1),
+    m_sw_zero_mask((T)1 << (sizeof(T) * BYTESIZE - 1)),
+    m_sw_one_mask((T)3 << (sizeof(T) * BYTESIZE - 2)){
     // init the member variables
     set_typInfo();
     m_bmArray = BM_CONSTRUCT_ARRAY((Datum*)NULL, m_capacity);
@@ -365,7 +366,7 @@ Bitmap<T>::insert
             int64_t temp = num_words * m_base;
             cur_pos += temp;
             if (cur_pos >= bit_pos){
-                // if the inserting position is in a composite word with 1
+                // if the inserting position is in a composite word with 1s
                 // then that's a duplicated number
                 if (BM_COMPWORD_ZERO(curword)){
                     insert_compword(bit_pos - (cur_pos - temp), num_words, i);
@@ -394,7 +395,7 @@ inline
 ArrayType*
 Bitmap<T>::to_ArrayType
 (
-    bool use_capacity /* true */
+    bool use_capacity /* = true */
 ){
     if (use_capacity || (m_size == m_capacity))
         return m_bmArray;
@@ -792,6 +793,7 @@ Bitmap<T>::nonzero_positions(int64_t& size){
     return result;
 }
 
+
 /**
  * @brief get the positions of the non-zero bits. The position starts from 1.
  *
@@ -877,6 +879,7 @@ Bitmap<T>::to_string(){
  * @brief convert the bitmap to varbit
  *
  * @return the varbit representation for the bitmap
+ * @note we should read the bits from left to right
  */
 template <typename T>
 inline

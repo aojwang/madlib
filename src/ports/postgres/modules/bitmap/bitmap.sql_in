@@ -237,6 +237,7 @@ IMMUTABLE;
  * @param args[1]   the input number
  *
  * @return an array indicating the state after inserting the input number.
+ * @note the default value for the second parameter is 16
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_agg_sfunc
 (
@@ -582,20 +583,23 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C
 IMMUTABLE STRICT;
 
-
+/* 
+ * Don't comment out commutator and negator for them, or
+ * the order by DESC will not work
+ */
 CREATE OPERATOR MADLIB_SCHEMA.< (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
     procedure = MADLIB_SCHEMA.bitmap_lt,
-    commutator = operator(MADLIB_SCHEMA.>) ,
-    negator = operator(MADLIB_SCHEMA.>=) ,
+    --commutator = operator(MADLIB_SCHEMA.>) ,
+    --negator = operator(MADLIB_SCHEMA.>=) ,
     restrict = scalarltsel, join = scalarltjoinsel
 );
 
 CREATE OPERATOR MADLIB_SCHEMA.<= (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
     procedure = MADLIB_SCHEMA.bitmap_le,
-    commutator = operator(MADLIB_SCHEMA.>=) ,
-    negator = operator(MADLIB_SCHEMA.>) ,
+    --commutator = operator(MADLIB_SCHEMA.>=) ,
+    --negator = operator(MADLIB_SCHEMA.>) ,
     restrict = scalarltsel, join = scalarltjoinsel
 );
 
@@ -603,8 +607,8 @@ CREATE OPERATOR MADLIB_SCHEMA.<= (
 CREATE OPERATOR MADLIB_SCHEMA.> (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
     procedure = MADLIB_SCHEMA.bitmap_gt,
-    commutator = operator(MADLIB_SCHEMA.<) ,
-    negator = operator(MADLIB_SCHEMA.<=) ,
+    --commutator = operator(MADLIB_SCHEMA.<) ,
+    --negator = operator(MADLIB_SCHEMA.<=) ,
     restrict = scalargtsel, join = scalargtjoinsel
 );
 
@@ -612,8 +616,8 @@ CREATE OPERATOR MADLIB_SCHEMA.> (
 CREATE OPERATOR MADLIB_SCHEMA.>= (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
     procedure = MADLIB_SCHEMA.bitmap_ge,
-    commutator = operator(MADLIB_SCHEMA.<=) ,
-    negator = operator(MADLIB_SCHEMA.<) ,
+    --commutator = operator(MADLIB_SCHEMA.<=) ,
+    --negator = operator(MADLIB_SCHEMA.<) ,
     restrict = scalargtsel, join = scalargtjoinsel
 );
 
@@ -621,8 +625,8 @@ CREATE OPERATOR MADLIB_SCHEMA.>= (
 CREATE OPERATOR MADLIB_SCHEMA.<> (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap,
     procedure = MADLIB_SCHEMA.bitmap_neq,
-    commutator = operator(MADLIB_SCHEMA.<>) ,
-    negator = operator(MADLIB_SCHEMA.=) ,
+    --commutator = operator(MADLIB_SCHEMA.<>) ,
+    --negator = operator(MADLIB_SCHEMA.=) ,
     restrict = eqsel, join = eqjoinsel
 );
 
@@ -632,7 +636,13 @@ CREATE OPERATOR MADLIB_SCHEMA.= (
     procedure = MADLIB_SCHEMA.bitmap_eq,
     commutator = operator(MADLIB_SCHEMA.=) ,
     negator = operator(MADLIB_SCHEMA.<>) ,
-    restrict = eqsel, join = eqjoinsel
+    restrict = eqsel, join = eqjoinsel,
+    HASHS,
+    MERGES,
+    SORT1 = operator(MADLIB_SCHEMA.<),
+    SORT2 = operator(MADLIB_SCHEMA.<),
+    LTCMP = operator(MADLIB_SCHEMA.<),
+    GTCMP = operator(MADLIB_SCHEMA.>)
 );
 
 
