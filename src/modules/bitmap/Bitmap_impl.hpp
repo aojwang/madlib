@@ -15,13 +15,13 @@ Bitmap<T>::Bitmap
 ) :
     m_bmArray(NULL), m_bitmap(NULL), m_size(1), m_capacity(capacity),
     m_size_per_add(size_per_add), m_bitmap_updated(true),
-    m_base(sizeof(T) * BYTESIZE - 1),
-    m_wordcnt_mask(((T)1 << (sizeof(T) * BYTESIZE - 2)) - 1),
-    m_sw_zero_mask((T)1 << (sizeof(T) * BYTESIZE - 1)),
-    m_sw_one_mask((T)3 << (sizeof(T) * BYTESIZE - 2)){
+    m_base(BM_BASE),
+    m_wordcnt_mask(BM_WORDCNT_MASK),
+    m_cw_zero_mask(BM_CW_ZERO_MASK),
+    m_cw_one_mask(BM_CW_ONE_MASK){
     set_typInfo();
     m_bmArray = BM_CONSTRUCT_ARRAY((Datum*)NULL, capacity);
-    m_bitmap = reinterpret_cast<T*>(ARR_DATA_PTR(m_bmArray));
+    m_bitmap = BM_ARR_DATA_PTR(m_bmArray, T);
     m_bitmap[0] = 1;
 }
 
@@ -37,7 +37,7 @@ Bitmap<T>::Bitmap
     m_size(BM_ARRAY_LENGTH(arr)), m_capacity(BM_ARRAY_LENGTH(arr)),
     m_size_per_add(rhs.m_size_per_add), m_bitmap_updated(false),
     m_base(rhs.m_base), m_wordcnt_mask(rhs.m_wordcnt_mask),
-    m_sw_zero_mask(rhs.m_sw_zero_mask), m_sw_one_mask(rhs.m_sw_one_mask),
+    m_cw_zero_mask(rhs.m_cw_zero_mask), m_cw_one_mask(rhs.m_cw_one_mask),
     m_typoid(rhs.m_typoid), m_typlen(rhs.m_typelen),
     m_typbyval(rhs.m_typbyval), m_typalign(rhs.m_typalign){
 }
@@ -54,10 +54,10 @@ Bitmap<T>::Bitmap
     m_bmArray(const_cast<ArrayType*>(handle.array())),
     m_bitmap(const_cast<T*>(handle.ptr())), m_size(handle[0]),
     m_capacity(handle.size()), m_size_per_add(size_per_add),
-    m_bitmap_updated(false), m_base(sizeof(T) * BYTESIZE - 1),
-    m_wordcnt_mask(((T)1 << (sizeof(T) * BYTESIZE - 2)) - 1),
-    m_sw_zero_mask((T)1 << (sizeof(T) * BYTESIZE - 1)),
-    m_sw_one_mask((T)3 << (sizeof(T) * BYTESIZE - 2)) {
+    m_bitmap_updated(false), m_base(BM_BASE),
+    m_wordcnt_mask(BM_WORDCNT_MASK),
+    m_cw_zero_mask(BM_CW_ZERO_MASK),
+    m_cw_one_mask(BM_CW_ONE_MASK) {
     set_typInfo();
 }
 
@@ -72,8 +72,8 @@ Bitmap<T>::Bitmap
     m_capacity(rhs.m_capacity), m_size_per_add(rhs.m_size_per_add),
     m_bitmap_updated(rhs.m_bitmap_updated), m_base(rhs.m_base),
     m_wordcnt_mask(rhs.m_wordcnt_mask),
-    m_sw_zero_mask(rhs.m_sw_zero_mask),
-    m_sw_one_mask(rhs.m_sw_one_mask),
+    m_cw_zero_mask(rhs.m_cw_zero_mask),
+    m_cw_one_mask(rhs.m_cw_one_mask),
     m_typoid(rhs.m_typoid), m_typlen(rhs.m_typelen),
     m_typbyval(rhs.m_typbyval), m_typalign(rhs.m_typalign){
 }
@@ -87,14 +87,14 @@ Bitmap<T>::Bitmap
 ):
     m_bmArray(NULL), m_bitmap(NULL), m_size(1), m_capacity(8),
     m_size_per_add(8), m_bitmap_updated(false),
-    m_base(sizeof(T) * BYTESIZE - 1),
-    m_wordcnt_mask(((T)1 << (sizeof(T) * BYTESIZE - 2)) - 1),
-    m_sw_zero_mask((T)1 << (sizeof(T) * BYTESIZE - 1)),
-    m_sw_one_mask((T)3 << (sizeof(T) * BYTESIZE - 2)){
+    m_base(BM_BASE),
+    m_wordcnt_mask(BM_WORDCNT_MASK),
+    m_cw_zero_mask(BM_CW_ZERO_MASK),
+    m_cw_one_mask(BM_CW_ONE_MASK){
     // init the member variables
     set_typInfo();
     m_bmArray = BM_CONSTRUCT_ARRAY((Datum*)NULL, m_capacity);
-    m_bitmap = reinterpret_cast<T*>(ARR_DATA_PTR(m_bmArray));
+    m_bitmap = BM_ARR_DATA_PTR(m_bmArray, T);
     m_bitmap[0] = 1;
 
     // convert the input string to a bitmap
@@ -162,8 +162,8 @@ Bitmap<T>::breakup_compword
     if (word_pos > 1 && word_pos < num_words){
         memmove(newbitmap + index + 2,
                 m_bitmap + index, (m_size - index) * sizeof(T));
-        newbitmap[index] = (T)(word_pos - 1) | m_sw_zero_mask;
-        newbitmap[index + 2] = (T)(num_words - word_pos) | m_sw_zero_mask;
+        newbitmap[index] = (T)(word_pos - 1) | m_cw_zero_mask;
+        newbitmap[index + 2] = (T)(num_words - word_pos) | m_cw_zero_mask;
         ++index;
         m_size += 2;
     }else{
@@ -171,10 +171,10 @@ Bitmap<T>::breakup_compword
                 m_bitmap + index, (m_size - index) * sizeof(T));
         // the inserted position is in the beginning of a composite word
         if (1 == word_pos){
-            newbitmap[index + 1] = (T)(num_words - 1) | m_sw_zero_mask;
+            newbitmap[index + 1] = (T)(num_words - 1) | m_cw_zero_mask;
         }else{
             // the inserted position is in the end of a composite word
-            newbitmap[index] = (T)(num_words - 1) | m_sw_zero_mask;
+            newbitmap[index] = (T)(num_words - 1) | m_cw_zero_mask;
             ++index;
         }
         m_size += 1;
@@ -265,14 +265,14 @@ Bitmap<T>::append
 
     // fill the composite words
     for (; need_elems > 2; --need_elems){
-        m_bitmap[i++] = m_sw_zero_mask | max_bits;
+        m_bitmap[i++] = m_cw_zero_mask | max_bits;
         ++m_size;
     }
 
     // the first word is composite word
     // the second is a normal word
     if ((2 == need_elems) && (num_words > 1)){
-        m_bitmap[i] = m_sw_zero_mask | (T)(num_words - 1);
+        m_bitmap[i] = m_cw_zero_mask | (T)(num_words - 1);
         m_bitmap[++i] = (T)1 << (cur_pos - 1);
         m_size += 2;
     }else{
@@ -309,7 +309,7 @@ Bitmap<T>::merge_norm_to_comp
     if (preword > 0 ||
         !(BM_COMPWORD_ONE(preword)) ||
         BM_FULL_COMP_ONE(preword)){
-        curword = m_sw_one_mask | 1;
+        curword = m_cw_one_mask | 1;
     }else{
         memmove(m_bitmap + i, m_bitmap + (i + 1),
                 (m_size - i - 1) * sizeof(T));
@@ -354,7 +354,7 @@ Bitmap<T>::insert
             if (cur_pos >= bit_pos){
                 // use | rather than + to allow duplicated numbers insertion
                 curword |= (T)1 << ((get_pos_word(bit_pos)) - 1);
-                if ((~m_sw_zero_mask) == curword){
+                if ((~m_cw_zero_mask) == curword){
                     merge_norm_to_comp(curword, i);
                 }
                 return *this;
@@ -505,7 +505,7 @@ Bitmap<T>::bitwise_proc
         if ((lword ^ rword) >= 0){
             temp = (this->*op)(lword, rword);
             if (lword < 0){
-                temp = (temp & m_sw_one_mask ) | bitwise_comp_comp_words
+                temp = (temp & m_cw_one_mask ) | bitwise_comp_comp_words
                     (lword, rword, i, j, m_bitmap, rhs.m_bitmap);
             }else{
                 lword = m_bitmap[++i];
@@ -535,7 +535,7 @@ Bitmap<T>::bitwise_proc
 
     // if the bitmap only has one word, and the word is a composite word with all
     // values are 0, then trim it
-    k = (2 == k) && ((pre_word & m_sw_one_mask) == m_sw_zero_mask) ? 1 : k;
+    k = (2 == k) && ((pre_word & m_cw_one_mask) == m_cw_zero_mask) ? 1 : k;
 
     madlib_assert(k <= capacity,
         std::logic_error
@@ -566,10 +566,10 @@ Bitmap<T>::bitwise_or
 ){
     T res = rhs > 0 ? lhs | rhs :
                     BM_COMPWORD_ONE(rhs) ?
-                    m_sw_one_mask | 1 : lhs;
+                    m_cw_one_mask | 1 : lhs;
     // if all the bits of the result are 1, then use a composite word
     // to represent it
-    return res == (~m_sw_zero_mask) ? m_sw_one_mask | 1 : res;
+    return res == (~m_cw_zero_mask) ? m_cw_one_mask | 1 : res;
 }
 
 
@@ -600,8 +600,8 @@ Bitmap<T>::or_postproc
 ){
     for (; i < bitmap.m_size; ++k){
         T temp = (curword < 0) ? curword :
-                    ((curword == (~m_sw_zero_mask)) ?
-                    (m_sw_one_mask | 1) : curword);
+                    ((curword == (~m_cw_zero_mask)) ?
+                    (m_cw_one_mask | 1) : curword);
         if (k >= 2 && BM_SAME_SIGN(temp, pre_word)){
             pre_word += BM_NUMWORDS_IN_COMP(temp);
             result[--k] = pre_word;
@@ -652,10 +652,10 @@ Bitmap<T>::bitwise_and
 ){
     T res = rhs > 0 ? lhs & rhs :
                     BM_COMPWORD_ONE(rhs) ?
-                    lhs : m_sw_zero_mask | 1;
+                    lhs : m_cw_zero_mask | 1;
     // if all the bits of the result are 0, then use a composite word
     // to represent it
-    return (0 == res) ? (m_sw_zero_mask | 1) : res;
+    return (0 == res) ? (m_cw_zero_mask | 1) : res;
 }
 /**
  * @brief override the operator &

@@ -16,6 +16,11 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 #define DEFAULT_SIZE_PER_ADD 16
 #define EMTYP_BITMAP Bitmap(1, DEFAULT_SIZE_PER_ADD)
 
+#define BM_BASE         (sizeof(T) * BYTESIZE - 1)
+#define BM_WORDCNT_MASK (((T)1 << (BM_BASE - 1)) - 1)
+#define BM_CW_ZERO_MASK ((T)1 << BM_BASE)
+#define BM_CW_ONE_MASK  ((T)3 << (BM_BASE - 1))
+
 // the following macros will be used to calculate the number of 1s in an integer
 #define BM_POW(c, T) ((T)1<<(c))
 #define BM_MASK(c, T) (((T)-1) / (BM_POW(BM_POW(c, T), T) + 1))
@@ -40,7 +45,7 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 #define BM_NUMWORDS_IN_COMP(val) ((val) & m_wordcnt_mask)
 
 #define BM_FULL_COMP_ONE(val) (val == ((T)-1))
-#define BM_FULL_COMP_ZERO(val) (val == (m_wordcnt_mask | m_sw_zero_mask))
+#define BM_FULL_COMP_ZERO(val) (val == (m_wordcnt_mask | m_cw_zero_mask))
 
 // get the maximum 0s or 1s can be represented by a composite word
 // for bitmap4, its 0x3F FF FF FF.
@@ -358,8 +363,8 @@ private:
     // const variables
     const int m_base;
     const T m_wordcnt_mask;
-    const T m_sw_zero_mask;
-    const T m_sw_one_mask;
+    const T m_cw_zero_mask;
+    const T m_cw_one_mask;
 
     // type information
     Oid m_typoid;
