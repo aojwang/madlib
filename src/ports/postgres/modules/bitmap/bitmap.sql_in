@@ -16,85 +16,90 @@
 
 @about
 
-Many data mining algorithms need to deal with integer arrays. For example 
+Many data mining algorithms need to deal with a set of integers. For example 
 Apriori takes as input the IDs of the transactions that contain a specific item. 
 Using an array to keep these IDs leads to large storage overhead and low efficiency 
 in processing. We will need a more compact and efficient representation of these 
 numbers. MADLIB_SCHEMA.bitmap is a UDT that serves this purpose. 
 
-For example, an input array, say I, like this one: 
+For example, a set of integers (say I), which can be ordered or out of ordered, 
+like this one: 
 
 \code
-'{1,2,3, 32~3100000, 10000000}'::BIGINT[].
+1,2,3, 10000000, 32~3100000.
 \endcode
 
-would occupy more than 24MB of memory/disk space. Using a traditional bitmap 
-where each bit represents one number, we would still need more than 9MB space for 
-this array.
+If we use an array to keep them, it would occupy more than 24MB of memory/disk 
+space. Using a traditional bitmap where each bit represents one number, we would 
+still need more than 9MB space for those integers.
 
-MADLIB_SCHEMA.bitmap uses an INT4 array to keep the bitmap image. Each element 
-in the array is called as a word. There are two types of words: a normal word 
-and a composite word. The highest bit of a normal word is 0. The rest 31 bits 
-are used to represent numbers. The highest bit of a composite word is 1. 
+MADLIB_SCHEMA.bitmap uses an INT4 array to keep the bitmap image. We denote the
+bitmap image as B(n+1,w_1,w_2,...w_n), where n+1 is the total number of elements 
+in the bitmap and w_i (1<=i<=n) is called as a word with 32-bit. There are two 
+types of words: 
+> Normal Word (NW)
+  The highest bit of which is 0. The rest 31 bits are used to represent numbers.
+  The absolute positions of the nonzero bits of a NW in the bitmap image are the 
+  numbers represented by the NW. 
 
-We can reconstruct the original bitmap by scan through the INT4 array. We use 
-CUR to denote the value of the current word. 
-1. If the highest two bits of CUR is 11, we extract (CUR & (2^30 - 1))*31 number 
-   of 1s.
-2. If the highest two bits of CUR is 10, we extract (CUR & (2^30 - 1))*31 number
-   of 0s.
-3. If the highest bit of CUR is 0, we extract a bitmap which is lowest 31 bits
-   of CUR. 
-   
-A typical usage of bitmap is integer set. We also provide utility functions to 
-transform between integer set and bitmap. We use integer array to represent integer
-set.
-[5, 10, 20] 
+> Composite Word (CW)
+  The highest bit of which is 1. A composite word can be breakup to multiple
+  normal words. The breakup rules are as follows: 
+    + The second highest bit is 1 means that the composite word (w) represents 
+      (w & 0x4FFFFFFF) number of normal words with value 0x7FFFFFFF.
+    + The second highest bit is 0 means that the composite word (w) represents
+      (w & 0x4FFFFFFF) number of normal words with value 0x00000000.
 
-With this format, the aforementioned array I would be encoded as the following 
-array, denoted as E, with only five words, which occupy only 5 * 4 = 20 bytes: 
+Therefore, given the bitmap image B(n+1,w_1,w_2,...w_n), we can know that the 
+start position (p_i) of w_i is:
 \code
-array[0x5, 0x7, 0xc001869f, 0x80036574, 0x80000]
+     p_i = 1;                                              (i=1)
+     p_i = sum(w_j > 0 ? 32 : (w_j & 0x4FFFFFFF) * 31;     (j=1..i-1 and i=2..n)
+\endcode  
+
+With the start position of each word, it's simple to calculate the absolute
+positions of the nonzero bits in each word. That's, it's easy to restore a 
+bitmap to the input integers represented by itself. 
+
+For example, the aforementioned integer set I would be encoded as the 
+following array, denoted as E, with only five words, which occupy only 
+5 * 4 = 20 bytes: 
+\code
+array[0x5, 0x7, 0xC001869F, 0x80036574, 0x80000]
 \endcode
 
 E[0], i.e. 0x5, is always set to the total 
 number of normal and composite words, i.e. 4 plus one. 
 
-E[1], i.e. 0x7, is a normal word. Since lowest 3 bits are all ones, we know that 
-the input array I has 1,2,3 in it. 
+E[1], i.e. 0x7, is a normal word. The start position is 1. As the lowest 3 bits 
+are all ones, we know that I has 1,2,3 in it. 
 
-E[2], i.e. 0xc001869f, is a composite word, The highest two bits are 11, which 
-means 
+E[2], i.e. 0xC001869F, is a composite word. The start position is 32.
+It can be breakup to 0x00001869F number of normal words with value 0x7FFFFFFF. 
+That means the integers from 32 to 3100000(31 + 0x1869F * 31) are in I
 
-The third word is a composite word, whose highest two bits are 11. Therefore 
- with continuous 1s. The first bit position
-    The second word: is 32 (since the first word is a normal word), 
-    The third word:
-     the last position is
-    31 + x'1869f'::INT * 31 = 3100000. All the bits from 32 to 3100000 is 1, 
-    which represents the input numbers (31~310000). The Fourth word is composite
-    word with continuous 0s. The first bit position is 3100001, and the last 
-    position is 3100000 +  x'36574'::INT * 31 = 9999980. All bits from 3100001
-    to 9999980 are 0. The last word is a normal word, the 20th bit position is 1.
-    That's means the position from  9999980 to 9999999 is zero, and the bit 
-    position 10000000 is 1 (which represent the input number 10000000). 
-    Therefore, we only need 16 bytes to represent so many input numbers. 
+E[3], i.e. 0x80036574, is a composite word. The start positions is 3100001.
+It can be breakup to 0x00036574 number of normal words with value 0x00000000.
+That means no integers are represented by this word.
+
+E[4], i.e. 0x80000, is a normal word. The start positions is 9999980.
+As the 20th bit is 1, we know that I has 10000000 (9999980 + 20) in it.
     
-    The module provides the bitmap as a user defined type (MADLIB_SCHEMA.bitmap). 
-
+    
 @usage
 
     A bitmap can be constructed as follows:
     <pre>
-    SELECT 'x1,x2 ,x3 , ..., xk'::MADLIB_SCHEMA.bitmap;
+    SELECT 'x1,x2,x3,...,xk'::MADLIB_SCHEMA.bitmap;
     </pre>
+    where x1,x2,x3,...,xk are integers.
     
-    Or, it can also be casted from a integer array:
+    Or, it can also be casted from an integer array:
     <pre>
-    SELECT ('{x1, x2, x3, ...xk}'::INT[])::MADLIB_SCHEMA.bitmap;
+    SELECT ('{x1,x2,x3,...xk}'::INT[])::MADLIB_SCHEMA.bitmap;
     </pre>
     
-    Or, it can be aggregated from a column with integer type:
+    Or, it can be aggregated from a column with integer type of a table:
     <pre>
     SELECT MADLIB_SCHEMA.bitmap_agg(tid) FROM trans_table;
     </pre>
@@ -107,11 +112,11 @@ The third word is a composite word, whose highest two bits are 11. Therefore
 
 @examp
 
-Here, we will give examples for the functions we provided in this version.
+Here, we will give examples for the functions that we provided in this version.
 
 The following three examples show how to build a bitmap:
 
-Cast a cstring to a bitmap:
+Building the bitmap from a cstring:
 \code
 sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap AS bitmap
  bitmap  
@@ -119,7 +124,7 @@ sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap AS bitmap
  1~3
 \endcode
 
-Cast an integer array to a bitmap. NULLs are not allowed. The duplicated 
+Building the bitmap from an integer array. NULLs are not allowed. The duplicated 
 numbers in the array will be ignored.
 \code
 sql> SELECT array[1,2,3]::MADLIB_SCHEMA.bitmap AS bitmap
@@ -128,8 +133,8 @@ sql> SELECT array[1,2,3]::MADLIB_SCHEMA.bitmap AS bitmap
  1~3
 \endcode
 
-Aggregate integers from a table to a bitmap. NULLs and duplicated numbers in 
-the aggregate array will be ignored.
+Building the bitmap by aggregating integers from a column of a table. NULLs are 
+not allowed. The duplicated numbers in the column will be ignored.
 \code
 sql> CREATE TEMP TABLE t1(id) AS SELECT generate_series(32, 62) UNION ALL
                                  SELECT unnest(array[1,2,3,4];
