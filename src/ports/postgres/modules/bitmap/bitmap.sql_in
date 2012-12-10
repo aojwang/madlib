@@ -424,7 +424,7 @@ IMMUTABLE STRICT;
  *
  * @return the bitmap representation for the array.
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.int8array_return_bitmap
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_from_int8array
 (
     INT8[]
 )
@@ -441,7 +441,7 @@ IMMUTABLE STRICT;
  *
  * @return the bitmap representation for the array.
  */
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.int4array_return_bitmap
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_from_int4array
 (
     INT4[]
 )
@@ -692,10 +692,10 @@ CREATE CAST (MADLIB_SCHEMA.bitmap AS INT4[])
 WITH FUNCTION MADLIB_SCHEMA.bitmap_return_array(MADLIB_SCHEMA.bitmap);
 
 CREATE CAST (INT8[] AS MADLIB_SCHEMA.bitmap) 
-WITH FUNCTION MADLIB_SCHEMA.int8array_return_bitmap(INT8[]);
+WITH FUNCTION MADLIB_SCHEMA.bitmap_from_int8array(INT8[]);
 
 CREATE CAST (INT4[] AS MADLIB_SCHEMA.bitmap) 
-WITH FUNCTION MADLIB_SCHEMA.int4array_return_bitmap(INT4[]);
+WITH FUNCTION MADLIB_SCHEMA.bitmap_from_int4array(INT4[]);
 
 CREATE CAST (MADLIB_SCHEMA.bitmap AS VARBIT) 
 WITH FUNCTION MADLIB_SCHEMA.bitmap_return_varbit(MADLIB_SCHEMA.bitmap);

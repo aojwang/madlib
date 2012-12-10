@@ -1,7 +1,7 @@
 #include <dbconnector/dbconnector.hpp>
 
 #include "BitmapUtil.hpp"
-#include "bitmap4.hpp"
+#include "bitmapops.hpp"
 
 namespace madlib {
 namespace modules {
@@ -64,8 +64,8 @@ bitmap_nonzero_positions::run(AnyType &args){
  * @brief get the bitmap representation for int64 array
  */
 AnyType
-int8array_return_bitmap::run(AnyType &args){
-    RETURN_BITMAP_NULL((BitmapUtil::array_return_bitmap<int32_t, int64_t>(args)));
+bitmap_from_int8array::run(AnyType &args){
+    RETURN_BITMAP_NULL((BitmapUtil::bitmap_from_array<int32_t, int64_t>(args)));
 }
 
 
@@ -73,8 +73,8 @@ int8array_return_bitmap::run(AnyType &args){
  * @brief get the bitmap representation for int32 array
  */
 AnyType
-int4array_return_bitmap::run(AnyType &args){
-    RETURN_BITMAP_NULL((BitmapUtil::array_return_bitmap<int32_t, int32_t>(args)));
+bitmap_from_int4array::run(AnyType &args){
+    RETURN_BITMAP_NULL((BitmapUtil::bitmap_from_array<int32_t, int32_t>(args)));
 }
 
 

@@ -243,7 +243,7 @@ bitmap_nonzero_positions
 template <typename T, typename X>
 static
 const ArrayType*
-array_return_bitmap
+bitmap_from_array
 (
     AnyType &args
 ){
