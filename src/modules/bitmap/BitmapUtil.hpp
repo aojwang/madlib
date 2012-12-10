@@ -247,16 +247,17 @@ array_return_bitmap
 (
     AnyType &args
 ){
-    ArrayHandle<X> handle = args[0].getAs< ArrayHandle<X> >();
+    MutableArrayHandle<X> handle = args[0].getAs< MutableArrayHandle<X> >();
     madlib_assert(!ARR_HASNULL(handle.array()),
             std::invalid_argument("the input array should not contains null"));
 
-    const X* array = handle.ptr();
+    X* array = handle.ptr();
     int size = handle.size();
 
     if (0 == size)
         return NULL;
 
+    qsort(array, size, sizeof(X), compare<X>);
     Bitmap<T> bitmap(DEFAULT_SIZE_PER_ADD, DEFAULT_SIZE_PER_ADD);
 
     for (int i = 0; i < size; ++i){
@@ -431,6 +432,7 @@ bitmap_cmp
 }
 
 protected:
+
 template <typename T>
 static
 const BITMAPOP
@@ -450,6 +452,13 @@ bitmap_cmp_internal
     }
 
     return (0 == res) ? EQ : ((res < 0) ? LT : GT);
+}
+
+template <typename X>
+static
+int
+compare(const void* lhs, const void* rhs){
+    return *(X*)lhs - *(X*)rhs;
 }
 
 }; // class BitmapUtil

@@ -50,7 +50,7 @@ types of words:
     + The second highest bit is 0 means that the composite word (w) represents
       (w & 0x4FFFFFFF) number of normal words with value 0x00000000.
 
-Therefore, given the bitmap image B(n+1,w_1,w_2,...w_n), we can know that the 
+Therefore, given the bitmap image B(n+1,w_1,w_2,...,w_n), we can know that the 
 start position (p_i) of w_i is:
 \code
      p_i = 1;                                              (i=1)
@@ -94,7 +94,7 @@ As the 20th bit is 1, we know that I has 10000000 (9999980 + 20) in it.
     </pre>
     where x1,x2,x3,...,xk are integers.
     
-    Or, it can also be casted from an integer array:
+    Or, it can also be built from an integer array:
     <pre>
     SELECT ('{x1,x2,x3,...xk}'::INT[])::MADLIB_SCHEMA.bitmap;
     </pre>
@@ -165,7 +165,7 @@ The following two examples show the CASTs for the bitmap:
 sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap::INT[] AS intcast
  intcast
 ---------
- {7}
+ {2,7}
 \endcode
 
 \code

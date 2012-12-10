@@ -71,23 +71,44 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
 /**
  * the class for building and manipulating the bitmap.
- * Here, we use an array to represent the bitmap. The first element of the array
- * keeps the real size of the bitmap. The reasons are that 1) in the bitmap_agg
- * step function, the capacity is always greater than the real size of the bitmap,
- * therefore, it would be better if we can get the real size of the bitmap quickly
- * rather than traverse the bitmap to get the real size; 2) one addition element
- * is small compared to the whole bitmap. An element in the array except the
- * first one is called a word whose size is equal to sizeof(T).
- * There are two type of words: normal word and composite word. The difference
- * between them is the highest bit. 0 for normal word and 1 for composite word.
- * Therefore, the value of a normal word is greater than zero and that of a
- * composite word is less than 0.
-
- * the bitmap array can be dynamically reallocated. If the real size of the
- * bitmap is equal to the capacity of the bitmap and we insert a bit to it,
- * then we will reallocate and copy the old bitmap elements to the new bitmap.
- * And we define a parameter "size_per_add" to indicate the number of empty
- * elements will be added to the bitmap.
+ * We use an array as the underlying implementation for the bitmap. The first
+ * element in the array keeps the real size of that array. The reasons why we
+ * keep the real size of the array are:
+ *  1) As the capacity of the array is always greater than the real size,
+ *  we can get the real size of the array using the first element rather than
+ *  traverse the whole array to get the real size;
+ *  2) one addition element is small compared to the whole Array.
+ *
+ * the bitmap array can be dynamically reallocated. If the required size of the
+ * bitmap is greater than the capacity of the bitmap, then we will allocate a
+ * new memory for the new bitmap and copy the old bitmap elements to the new one.
+ * And we define a parameter "size_per_add" to indicate the number of elements
+ * will be added to the bitmap array.
+ *
+ * Let's denote the bitmap image as B(n+1,w_1,w_2,...w_n), where n+1 is the total
+ * number of elements in the bitmap and w_i (1<=i<=n) is called as a word with
+ * 32-bit. There are two types of words:
+ * > Normal Word (NW)
+ *  The highest bit of which is 0. The rest 31 bits are used to represent numbers.
+ *  The absolute positions of the nonzero bits of a NW in the bitmap image are the
+ *  numbers represented by the NW.
+ *
+ *  > Composite Word (CW)
+ *  The highest bit of which is 1. A composite word can be breakup to multiple
+ *  normal words. The breakup rules are as follows:
+ *    + The second highest bit is 1 means that the composite word (w) represents
+ *      (w & 0x4FFFFFFF) number of normal words with value 0x7FFFFFFF.
+ *    + The second highest bit is 0 means that the composite word (w) represents
+ *      (w & 0x4FFFFFFF) number of normal words with value 0x00000000.
+ *
+ * Therefore, given the bitmap image B(n+1,w_1,w_2,...,w_n), we can know that the
+ * start position (p_i) of w_i is:
+ *   p_i = 1;                                              (i=1)
+ *   p_i = sum(w_j > 0 ? 32 : (w_j & 0x4FFFFFFF) * 31;     (j=1..i-1 and i=2..n)
+ *
+ * With the start position of each word, it's simple to calculate the absolute
+ * positions of the nonzero bits in each word. That's, it's easy to restore a
+ * bitmap to the input integers represented by itself.
  *
  * For example:
  *     bitmap[] = {4, 16, 0x80000003, 0xC0000002, 0, 0, 0, 0};
