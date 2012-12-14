@@ -1,7 +1,7 @@
 #include <dbconnector/dbconnector.hpp>
 
 #include "BitmapUtil.hpp"
-#include "bitmapops.hpp"
+#include "bitmap.hpp"
 
 namespace madlib {
 namespace modules {
@@ -41,6 +41,41 @@ bitmap_or::run(AnyType &args){
     RETURN_BITMAP(BitmapUtil::bitmap_or<int32_t>(args));
 }
 
+
+/**
+ * @brief the operator "XOR" implementation
+ */
+AnyType
+bitmap_xor::run(AnyType &args){
+    RETURN_BITMAP_NULL(BitmapUtil::bitmap_xor<int32_t>(args));
+}
+
+
+/**
+ * @brief the operator "NOT" implementation
+ */
+AnyType
+bitmap_not::run(AnyType &args){
+    RETURN_BITMAP_NULL(BitmapUtil::bitmap_not<int32_t>(args));
+}
+
+
+/**
+ * @brief set the specified bit to 1/0
+ */
+AnyType
+bitmap_set::run(AnyType &args){
+    RETURN_BITMAP(BitmapUtil::bitmap_set<int32_t>(args));
+}
+
+
+/**
+ * @brief test whether the specified bit is 1
+ */
+AnyType
+bitmap_test::run(AnyType &args){
+    RETURN_BASE(BitmapUtil::bitmap_test<int32_t>(args));
+}
 
 /**
  * @brief get the number of bits whose value is 1.

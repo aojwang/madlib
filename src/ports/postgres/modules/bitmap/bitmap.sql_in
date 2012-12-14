@@ -22,7 +22,7 @@ Using an array to keep these IDs leads to large storage overhead and low efficie
 in processing. We will need a more compact and efficient representation of these 
 numbers. MADLIB_SCHEMA.bitmap is a UDT that serves this purpose. 
 
-For example, a set of integers (say I), which can be ordered or out of ordered, 
+For example, a set of integers (say I), which can be ordered or unordered, 
 like this one: 
 
 \code
@@ -33,58 +33,51 @@ If we use an array to keep them, it would occupy more than 24MB of memory/disk
 space. Using a traditional bitmap where each bit represents one number, we would 
 still need more than 9MB space for those integers.
 
-MADLIB_SCHEMA.bitmap uses an INT4 array to keep the bitmap image. We denote the
-bitmap image as B(n+1,w_1,w_2,...w_n), where n+1 is the total number of elements 
-in the bitmap and w_i (1<=i<=n) is called as a word with 32-bit. There are two 
-types of words: 
-> Normal Word (NW)
-  The highest bit of which is 0. The rest 31 bits are used to represent numbers.
-  The absolute positions of the nonzero bits of a NW in the bitmap image are the 
-  numbers represented by the NW. 
+Therefore, we need a compact bitmap to represent a large number of integers. We
+assume these numbers are 1 based rather than 0 based. MADLIB_SCHEMA.bitmap is 
+such a compact bitmap implementation that uses an INT4 array to keep the bitmap 
+image. We denote the bitmap image as B(\f$n+1,w_1,w_2,...w_n\f$), where 
+\f$w_i\f$ (1<=i<=n) is 32-bit word. There are two types of words: 
+-# Normal Word (NW), whose highest bit is 0. The nonzero bits in the rest 31 
+   bits are used to represent numbers that appear in the input.
 
-> Composite Word (CW)
-  The highest bit of which is 1. A composite word can be breakup to multiple
-  normal words. The breakup rules are as follows: 
-    + The second highest bit is 1 means that the composite word (w) represents 
-      (w & 0x4FFFFFFF) number of normal words with value 0x7FFFFFFF.
-    + The second highest bit is 0 means that the composite word (w) represents
-      (w & 0x4FFFFFFF) number of normal words with value 0x00000000.
-
-Therefore, given the bitmap image B(n+1,w_1,w_2,...,w_n), we can know that the 
-start position (p_i) of w_i is:
-\code
-     p_i = 1;                                              (i=1)
-     p_i = sum(w_j > 0 ? 32 : (w_j & 0x4FFFFFFF) * 31;     (j=1..i-1 and i=2..n)
-\endcode  
-
-With the start position of each word, it's simple to calculate the absolute
-positions of the nonzero bits in each word. That's, it's easy to restore a 
-bitmap to the input integers represented by itself. 
+-# Composite Word (CW), whose highest bit is 1. If:
+    -# the second highest bit is 1, then it represents (w & 0x3FFFFFFF) * 31 
+       number of 1s.
+    -# the second highest bit is 0, then it represents (w & 0x3FFFFFFF) * 31 
+       number of 0s.
+Obviously, the integer value for an NW is positive, while for a CW, it's negative.
+Given the bitmap image B(\f$n+1,w_1,w_2,...w_n\f$), we can know that 
+the base (\f$p_i\f$) of the numbers represented by \f$w_i\f$ is:
+-# if i = 1, then \f$p_i\f$ = 1.
+-# if i > 1, then \f$p_i = \sum_{j=1}^{i-1}(w_j > 0 ? 32 : (w_j & 0x3FFFFFFF) * 31)\f$.
 
 For example, the aforementioned integer set I would be encoded as the 
-following array, denoted as E, with only five words, which occupy only 
-5 * 4 = 20 bytes: 
+following array: 
 \code
-array[0x5, 0x7, 0xC001869F, 0x80036574, 0x80000]
+array[0x00000005, 0x00000007, 0xC001869F, 0x80036574, 0x00080000]
 \endcode
 
-E[0], i.e. 0x5, is always set to the total 
-number of normal and composite words, i.e. 4 plus one. 
+Where:
+-# E[0], i.e. 0x00000005, is the total length of the array. 
 
-E[1], i.e. 0x7, is a normal word. The start position is 1. As the lowest 3 bits 
+-# E[1], i.e. 0x00000007, is a normal word. Its base is 1. As the lowest 3 bits 
 are all ones, we know that I has 1,2,3 in it. 
 
-E[2], i.e. 0xC001869F, is a composite word. The start position is 32.
-It can be breakup to 0x00001869F number of normal words with value 0x7FFFFFFF. 
-That means the integers from 32 to 3100000(31 + 0x1869F * 31) are in I
+-# E[2], i.e. 0xC001869F, is a composite word. Its base is 32.
+It represents 0x0001869F * 31 number of 1s. That means the integers from 32 to 
+(0x0001869F * 31 + 32) - 1, i.e. 3100000, are in I
 
-E[3], i.e. 0x80036574, is a composite word. The start positions is 3100001.
-It can be breakup to 0x00036574 number of normal words with value 0x00000000.
-That means no integers are represented by this word.
+-# E[3], i.e. 0x80036574, is a composite word. Its base is 3100001.
+It represents 0x00036574 * 31 number of 0s. That means no integers in range of 
+[3100001, (0x00036574 * 31 + 3100001) - 1], which is [3100001, 9999979].
 
-E[4], i.e. 0x80000, is a normal word. The start positions is 9999980.
-As the 20th bit is 1, we know that I has 10000000 (9999980 + 20) in it.
-    
+-# E[4], i.e. 0x00080000, is a normal word. Its base is 9999980.
+As the 20th bit is 1, we know that (9999980 + 20), i.e. 10000000 is in I.
+
+Obviously, for a sparse integer array like I we only need 5 words to represent 
+it as a bitmap. The savings in storage is huge. And the bitmap operations, such 
+as | and &, can be very efficient.
     
 @usage
 
@@ -169,10 +162,10 @@ sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap::INT[] AS intcast
 \endcode
 
 \code
-sql> SELECT '1,2,3'::MADLIB_SCHEMA.bitmap::varbit AS varbitcast
+sql> SELECT '1,2,3,32'::MADLIB_SCHEMA.bitmap::varbit AS varbitcast
             varbitcast             
 -----------------------------------
- 111000000000000000000000000000001
+ 11100000000000000000000000000001
 \endcode
 
 
@@ -342,6 +335,84 @@ RETURNS MADLIB_SCHEMA.bitmap
 AS 'MODULE_PATHNAME'
 LANGUAGE C
 IMMUTABLE STRICT;
+
+
+/*
+ * @brief The implementation of XOR operation.
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return the result of args[0] XOR args[1].
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_xor
+(
+    MADLIB_SCHEMA.bitmap,
+    MADLIB_SCHEMA.bitmap
+)
+RETURNS MADLIB_SCHEMA.bitmap
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE STRICT;
+
+
+/*
+ * @brief The implementation of NOT operation.
+ *
+ * @param args[0]   the bitmap array
+ *
+ * @return the result of !args[0].
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_not
+(
+    MADLIB_SCHEMA.bitmap
+)
+RETURNS MADLIB_SCHEMA.bitmap
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE STRICT;
+
+
+
+/*
+ * @brief set the value of the bit to 1/0
+ *
+ * @param args[0]   the bitmap 
+ * @param args[1]   the position of the bit
+ * @param args[2]   true for 1; false for 0
+ *
+ * @return the changed bitmap
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_set
+(
+    MADLIB_SCHEMA.bitmap,
+    INT8,
+    BOOL
+)
+RETURNS MADLIB_SCHEMA.bitmap
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
+
+
+/*
+ * @brief Test whether the specified bit is set
+ *
+ * @param args[0]   the bitmap
+ * @param args[1]   the specified bit to be tested
+ *
+ * @return True if the bit at specified bit in the bitmap is set,
+ *         otherwise, return False;
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_test
+(
+    MADLIB_SCHEMA.bitmap,
+    INT8
+)
+RETURNS BOOL
+AS 'MODULE_PATHNAME'
+LANGUAGE C
+IMMUTABLE;
 
 
 /*
@@ -682,6 +753,17 @@ CREATE OPERATOR MADLIB_SCHEMA.| (
 CREATE OPERATOR MADLIB_SCHEMA.& (
     leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap, 
     procedure = MADLIB_SCHEMA.bitmap_and
+);
+
+CREATE OPERATOR MADLIB_SCHEMA.# (
+    leftarg = MADLIB_SCHEMA.bitmap, rightarg = MADLIB_SCHEMA.bitmap, 
+    procedure = MADLIB_SCHEMA.bitmap_xor
+);
+
+
+CREATE OPERATOR MADLIB_SCHEMA.~ (
+    rightarg = MADLIB_SCHEMA.bitmap, 
+    procedure = MADLIB_SCHEMA.bitmap_not
 );
 
 

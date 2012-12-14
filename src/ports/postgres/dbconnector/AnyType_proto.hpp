@@ -38,7 +38,8 @@ public:
 
     // Set isCheckType to false, if you don't want to check the type of this instance.
     // Set isCloneMutable to false, if you don't want to copy the mutable TypeTraits,
-    // for example the state of the aggregate step/pre/final function;
+    // for example, in the aggregate step/pre/final function, we always get the state by
+    // setting isCloneMutable to false.
     template <typename T> T getAs(bool isCheckType = true, bool isCloneMutable = true) const;
 
     AnyType operator[](uint16_t inID) const;

@@ -5,7 +5,6 @@
 
 #include "Bitmap_proto.hpp"
 #include "Bitmap_impl.hpp"
-#include "Bitmap.hpp"
 
 namespace madlib {
 namespace modules {
@@ -15,7 +14,7 @@ using madlib::dbconnector::postgres::TypeTraits;
 using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
 /**
- * @brief This class encapsulate the interfaces for manipulate the bitmap.
+ * @brief This class encapsulates the interfaces for manipulating the bitmap.
  *        All functions are static.
  *
  */
@@ -51,7 +50,7 @@ bitmap_agg_sfunc
     AnyType &args
 ){
     madlib_assert(!args[1].isNull(),
-            std::invalid_argument("the input parameter input_bit"
+            std::invalid_argument("the value of the first parameter "
                     "should not be null"));
     int64_t input_bit = args[1].getAs<int64_t>();
 
@@ -59,11 +58,11 @@ bitmap_agg_sfunc
     int size_per_add = DEFAULT_SIZE_PER_ADD;
     if (3 == args.numFields()){
         madlib_assert(!args[2].isNull(),
-                std::invalid_argument("the input parameter size_per_add"
+                std::invalid_argument("the value of the third parameter "
                         "should not be null"));
         size_per_add = args[2].getAs<int32_t>();
         madlib_assert(size_per_add > 1,
-                std::invalid_argument("the input parameter size_per_add"
+                std::invalid_argument("the input parameter size_per_add "
                         "should not greater than 1"));
 
     }
@@ -73,12 +72,12 @@ bitmap_agg_sfunc
     if (state.isNull()){
         Bitmap<T> bitmap(size_per_add, size_per_add);
         bitmap.insert(input_bit);
-        return bitmap();
+        return bitmap.to_ArrayType();
     }
     // state is not null
     Bitmap<T> bitmap(GETARG_MUTABLE_BITMAP(state), size_per_add);
     bitmap.insert(input_bit);
-    return bitmap.updated() ? bitmap() : GETARG_IMMUTABLE_BITMAP(state).array();
+    return bitmap.updated() ? bitmap.to_ArrayType() : GETARG_IMMUTABLE_BITMAP(state).array();
 }
 
 
@@ -122,7 +121,7 @@ bitmap_agg_pfunc
         if (bitmap.full()){
             return GETARG_IMMUTABLE_BITMAP(states[nonull_index]).array();
         }
-        return bitmap(false);
+        return bitmap.to_ArrayType(false);
     }
 
     // all the arguments are not null
@@ -163,7 +162,47 @@ bitmap_and
 
 
 /**
- * @brief The implementation of OR operation.
+ * @brief The implementation of XOR operation.
+ *
+ * @param args[0]   the first bitmap array
+ * @param args[1]   the second bitmap array
+ *
+ * @return the result of args[0] XOR args[1].
+ * @note the bitmap(UDT) uses integer array as underlying implementation. To
+ *       achieve good performance, we will not converting between bitmap and
+ *       integer array. Thus, we need to skip the type checks of the C++ AL.
+ *          + the input argument is bitmap, we will get it as array.
+ *          + the return value is bitmap, we will return it as array. Therefore,
+ *            we will explicit set the OID of return value to InvalidOid, so that
+ *            later the function getAsDatum will not check its type.
+ *
+ */
+template<typename T>
+static
+const ArrayType*
+bitmap_xor
+(
+    AnyType &args
+){
+    Bitmap<T> bm1(GETARG_IMMUTABLE_BITMAP(args[0]));
+    Bitmap<T> bm2(GETARG_IMMUTABLE_BITMAP(args[1]));
+    return bm1.op_xor(bm2);
+}
+
+
+template<typename T>
+static
+const ArrayType*
+bitmap_not
+(
+    AnyType &args
+){
+    Bitmap<T> bm(GETARG_IMMUTABLE_BITMAP(args[0]));
+    return bm.op_not();
+}
+
+/**
+ * @brief The implementation of  operation.
  *
  * @param args[0]   the first bitmap array
  * @param args[1]   the second bitmap array
@@ -188,6 +227,66 @@ bitmap_or
     Bitmap<T> bm1(GETARG_IMMUTABLE_BITMAP(args[0]));
     Bitmap<T> bm2(GETARG_IMMUTABLE_BITMAP(args[1]));
     return bm1.op_or(bm2);
+}
+
+
+/*
+ * @brief set the value of the bit to 1/0
+ *
+ * @param args[0]   the bitmap
+ * @param args[1]   the position of the bit
+ * @param args[2]   true for 1; false for 0
+ *
+ * @return the changed bitmap
+ */
+template<typename T>
+static
+const ArrayType*
+bitmap_set
+(
+    AnyType &args
+){
+
+    madlib_assert(!args[0].isNull() && !args[1].isNull() && !args[2].isNull(),
+            std::invalid_argument("the input parameters should not be null"));
+
+    int64_t number = args[1].getAs<int64_t>();
+    madlib_assert(number > 0,
+            std::invalid_argument("the input number should be greater than 0"));
+    bool needset = args[2].getAs<bool>();
+
+    Bitmap<T> bm(GETARG_CLONED_BITMAP(args[0]));
+
+    return needset ? bm.insert(number).to_ArrayType(false) : bm.reset(number);
+}
+
+
+/*
+ * @brief Test whether the specified bit is set
+ *
+ * @param args[0]   the bitmap
+ * @param args[1]   the specified bit to be tested
+ *
+ * @return True if the bit at specified bit in the bitmap is set,
+ *         otherwise, return False;
+ */
+template<typename T>
+static
+const bool
+bitmap_test
+(
+    AnyType &args
+){
+
+    madlib_assert(!args[0].isNull() && !args[1].isNull(),
+            std::invalid_argument("the input parameters should not be null"));
+
+    int64_t number = args[1].getAs<int64_t>();
+    madlib_assert(number > 0,
+            std::invalid_argument("the input number should be greater than 0"));
+
+    Bitmap<T> bm(GETARG_MUTABLE_BITMAP(args[0]));
+    return bm[number];
 }
 
 
@@ -264,7 +363,7 @@ bitmap_from_array
         bitmap.insert((int64_t)array[i]);
     }
 
-    return bitmap(false);
+    return bitmap.to_ArrayType(false);
 }
 
 
@@ -282,7 +381,7 @@ bitmap_in
 (
     AnyType &args
 ){
-    return (Bitmap<T>(args[0].getAs<char*>()))(false);
+    return (Bitmap<T>(args[0].getAs<char*>())).to_ArrayType(false);
 }
 
 
