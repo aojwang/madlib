@@ -150,6 +150,18 @@ bitmap_return_array::run(AnyType &args){
 }
 
 
+void*
+bitmap_unnest::SRF_init(AnyType &args) {
+    return BitmapUtil::bitmap_unnest_init<int32_t>(args);
+}
+
+AnyType
+bitmap_unnest::SRF_next(void *user_fctx, bool *is_last_call) {
+    int64_t res = BitmapUtil::bitmap_unnest_next<int32_t>(user_fctx, is_last_call);
+    return -1 == res ? AnyType() : AnyType(res);
+}
+
+
 /**
  * @brief the implementation of operator =
  */

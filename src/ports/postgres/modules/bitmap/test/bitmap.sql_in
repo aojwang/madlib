@@ -41,6 +41,55 @@ END
 $$ LANGUAGE PLPGSQL; 
 
 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.test_bitmap_unnest
+(
+)
+RETURNS TEXT AS $$
+DECLARE
+    data    TEXT[] := ARRAY['1,31,32,93,94', '1,2,3,4,5,6', '1,2,4,5,7,8,9,10,11', '1,2,100000'];
+    result  BOOL;
+BEGIN
+
+    EXECUTE 'DROP TABLE IF EXISTS t1';
+    EXECUTE 'CREATE TEMP TABLE t1(id) AS SELECT unnest(ARRAY[1,2,3,4,5,10008]) UNION SELECT generate_series(1000, 2000);';
+    EXECUTE 'SELECT count(s.id) = count(t.id) FROM
+             (SELECT id FROM t1) s,
+             (SELECT id FROM 
+                (SELECT MADLIB_SCHEMA.bitmap_unnest(bm) as id FROM 
+                    (SELECT MADLIB_SCHEMA.bitmap_agg(id) as bm FROM t1) m) n ) t
+             WHERE s.id = t.id' INTO result;
+             
+    PERFORM MADLIB_SCHEMA.test_assert(result);
+
+    FOR i in 1..array_upper(data, 1) LOOP
+        EXECUTE 'select string_agg(id, '','') = ''' || data[i] || ''' FROM 
+                (SELECT MADLIB_SCHEMA.bitmap_unnest(''' || 
+                    data[i] || 
+                    '''::MADLIB_SCHEMA.bitmap) id ) t;' INTO result;
+        PERFORM MADLIB_SCHEMA.test_assert(result); 
+    END LOOP;
+    
+    EXECUTE 'select count(s.id) = count(t.id)
+             from 
+             (SELECT MADLIB_SCHEMA.bitmap_unnest(
+                    array(select generate_series(1E10::BIGINT,1E10::BIGINT + 5))::MADLIB_SCHEMA.bitmap) id) s,
+             (SELECT generate_series(1E10::BIGINT,1E10::BIGINT + 5) id) t
+             WHERE s.id = t.id' INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result); 
+    
+    EXECUTE 'select count(s.id) = count(t.id)
+             from 
+             (SELECT MADLIB_SCHEMA.bitmap_unnest(
+                    array(select generate_series(1E17::BIGINT,1E17::BIGINT + 5))::MADLIB_SCHEMA.bitmap) id) s,
+             (SELECT generate_series(1E17::BIGINT,1E17::BIGINT + 5) id) t
+             WHERE s.id = t.id' INTO result;
+    PERFORM MADLIB_SCHEMA.test_assert(result); 
+    
+    RETURN 'PASS';
+END
+$$ LANGUAGE PLPGSQL; 
+
+
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.test_bitmap_in_out
 (
 )
@@ -730,5 +779,6 @@ SELECT MADLIB_SCHEMA.test_bitmap_nonzero_positions();
 SELECT MADLIB_SCHEMA.test_bitmap_nonzero_count();
 SELECT MADLIB_SCHEMA.test_bitmap_return_array();
 SELECT MADLIB_SCHEMA.test_bitmap_return_varbit();
+SELECT MADLIB_SCHEMA.test_bitmap_unnest();
 SELECT MADLIB_SCHEMA.test_operator_class();
 

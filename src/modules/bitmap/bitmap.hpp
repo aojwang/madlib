@@ -30,4 +30,6 @@ DECLARE_UDF(bitmap, bitmap_ge)
 DECLARE_UDF(bitmap, bitmap_lt)
 DECLARE_UDF(bitmap, bitmap_gt)
 DECLARE_UDF(bitmap, bitmap_cmp)
+DECLARE_SR_UDF(bitmap, bitmap_unnest)
+
 

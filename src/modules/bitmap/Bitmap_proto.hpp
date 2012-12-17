@@ -38,6 +38,7 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 #define GETARG_CLONED_BITMAP(arg)      GETARG_CLONED_BITMAP_INTERNAL(arg, int32_t)
 #define GETARG_IMMUTABLE_BITMAP(arg)   GETARG_IMMUTABLE_BITMAP_INTERNAL(arg, int32_t)
 
+// internal defines
 #define INT64FORMAT     "%lld"
 #define MAXBITSOFINT64  25
 #define BYTESIZE        8
@@ -49,7 +50,6 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 #define BM_WORDCNT_MASK     (((T)1 << (BM_BASE - 1)) - 1)
 #define BM_CW_ZERO_MASK     ((T)1 << BM_BASE)
 #define BM_CW_ONE_MASK      ((T)3 << (BM_BASE - 1))
-#define BM_MAX_NUM_BITS     (1 << 25)
 
 // the following macros will be used to calculate the number of 1s in an integer
 #define BM_POW(c, T)        ((T)1<<(c))
@@ -75,7 +75,7 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 #define BM_NUMWORDS_FOR_BITS(val)   (((val) + m_base - 1) / m_base)
 // get the number of words in the composite word
 #define BM_NUMWORDS_IN_COMP(val)    ((val) & m_wordcnt_mask)
-#define BM_NUMBITS_IN_COMP(val)     BM_NUMWORDS_IN_COMP(val) * m_base
+#define BM_NUMBITS_IN_COMP(val)     BM_NUMWORDS_IN_COMP(val) * (int64_t)m_base
 #define BM_BIT_TEST(val, bit)  \
          ((val) > 0 ?  (((val) & (1 << ((bit) - 1))) > 0) : BM_COMPWORD_ONE(val))
 

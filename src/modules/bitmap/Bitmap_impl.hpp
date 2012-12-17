@@ -1018,8 +1018,6 @@ Bitmap<T>::nonzero_positions(int64_t& size) const{
     size = nonzero_count();
     int64_t* result = NULL;
     if (size > 0){
-        madlib_assert(size < BM_MAX_NUM_BITS,
-                std::runtime_error("too many bits are nonzero"));
         result = new int64_t[size];
         nonzero_positions(result);
     }
@@ -1040,8 +1038,6 @@ ArrayType*
 Bitmap<T>::nonzero_positions() const{
     int64_t* result = NULL;
     int size = nonzero_count();
-    madlib_assert(size < BM_MAX_NUM_BITS,
-            std::runtime_error("too many bits are nonzero"));
     ArrayType* res_arr = alloc_array<int64_t>(result, size);
     nonzero_positions(result);
 
@@ -1064,8 +1060,6 @@ inline
 char*
 Bitmap<T>::to_string() const{
     int64_t size = nonzero_count();
-    madlib_assert(size < BM_MAX_NUM_BITS,
-            std::runtime_error("too many bits are nonzero"));
     int64_t* result = new int64_t[size + 1];
     nonzero_positions(result);
 

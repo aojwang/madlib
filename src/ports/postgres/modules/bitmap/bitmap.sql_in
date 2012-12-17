@@ -489,6 +489,22 @@ IMMUTABLE STRICT;
 
 
 /*
+ * @brief unnest the bitmap to a set of integers
+ *
+ * @param args[0]   the bitmap
+ *
+ */
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_unnest
+(
+    MADLIB_SCHEMA.bitmap
+)
+RETURNS SETOF INT8
+AS 'MODULE_PATHNAME'
+LANGUAGE C 
+IMMUTABLE STRICT;
+
+
+/*
  * @brief get the bitmap representation for the array
  *
  * @param args[0]   the input array

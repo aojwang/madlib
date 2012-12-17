@@ -413,6 +413,94 @@ bitmap_return_array
 }
 
 
+/**
+ * @brief the init function for bitmap_unnest
+ */
+template <typename T>
+static
+void *
+bitmap_unnest_init(AnyType &args) {
+    ArrayHandle<T> arr = GETARG_IMMUTABLE_BITMAP(args[0]);
+    madlib_assert(arr.size() == (size_t)arr[0],
+            std::invalid_argument("invalid bitmap"));
+
+    // allocate memory for user context
+    unnest_fctx<T>*  fctx = new unnest_fctx<T>();
+    fctx->bitmap = arr.ptr();
+    fctx->size = arr.size();
+    fctx->index = 0;
+    fctx->word = 0;
+    fctx->cur_pos = 0;
+    fctx->max_pos = 0;
+
+    return fctx;
+}
+
+
+/**
+ * @brief the next function for bitmap_unnest
+ *
+ * @param user_fctx     the user context
+ * @param is_last_call  is it the last call
+ *
+ * @return the current value
+ */
+template <typename T>
+static
+int64_t
+bitmap_unnest_next(void *user_fctx, bool *is_last_call) {
+    madlib_assert(is_last_call,
+         std::invalid_argument("the paramter is_last_class should not be null"));
+
+    unnest_fctx<T> *fctx       = static_cast<unnest_fctx<T>*>(user_fctx);
+    T& curword = fctx->word;
+    int& index = fctx->index;
+    int64_t& cur_pos = fctx->cur_pos;
+    int64_t& max_pos = fctx->max_pos;
+
+    if (0 == curword){
+        ++index;
+        if (index >= fctx->size){
+            *is_last_call = true;
+            return -1;
+        }
+
+        // skip the composite words that represent continuous 0s
+        curword = fctx->bitmap[index];
+        while ((curword < 0) &&
+                (0 == ((BM_WORDCNT_MASK + 1) & curword))){
+            max_pos += (int64_t)(BM_WORDCNT_MASK & curword) * BM_BASE;
+            ++index;
+            madlib_assert(index < fctx->size,
+                 std::runtime_error("invalid bitmap"));
+            curword = fctx->bitmap[index];
+        }
+        cur_pos = max_pos;
+        max_pos += curword > 0 ? 31 :
+                (int64_t)(BM_WORDCNT_MASK & curword) * (int64_t)BM_BASE;
+    }
+
+    if (curword > 0){
+        // the normal word has 1s
+        T preword = 0;
+        do{
+            preword = curword;
+            curword >>= 1;
+            ++cur_pos;
+        }while (0 == (preword & 0x01));
+    }else{
+        // a composite word with 1s
+        ++cur_pos;
+        if (cur_pos >= max_pos){
+            curword = 0;
+        }
+    }
+
+    *is_last_call = false;
+    return cur_pos;
+}
+
+
 public:
 /**
  * @brief the implementation for operator >
@@ -523,6 +611,18 @@ int
 compare(const void* lhs, const void* rhs){
     return *(X*)lhs - *(X*)rhs;
 }
+
+template <typename T>
+class unnest_fctx
+{
+public:
+    const T* bitmap;
+    int size;
+    int index;
+    T word;
+    int64_t cur_pos;
+    int64_t max_pos;
+};
 
 }; // class BitmapUtil
 
