@@ -8,7 +8,7 @@ namespace modules {
 namespace bitmap {
 
 /**
- * @brief the step function for the bitmap aggregate.
+ * @brief the step function for the bitmap_agg.
  */
 AnyType
 bitmap_agg_sfunc::run(AnyType &args){
@@ -16,7 +16,7 @@ bitmap_agg_sfunc::run(AnyType &args){
 }
 
 /**
- * @brief the pre-function for the bitmap aggregate.
+ * @brief the pre-function for the bitmap_agg.
  */
 AnyType
 bitmap_agg_pfunc::run(AnyType &args){
@@ -88,6 +88,7 @@ bitmap_nonzero_count::run(AnyType &args){
 
 /**
  * @brief get the positions of the non-zero bits.
+ * @note the position start from 1.
  */
 AnyType
 bitmap_nonzero_positions::run(AnyType &args){
@@ -96,7 +97,7 @@ bitmap_nonzero_positions::run(AnyType &args){
 
 
 /**
- * @brief get the bitmap representation for int64 array
+ * @brief get the bitmap representation for the int64 array
  */
 AnyType
 bitmap_from_int8array::run(AnyType &args){
@@ -105,7 +106,7 @@ bitmap_from_int8array::run(AnyType &args){
 
 
 /**
- * @brief get the bitmap representation for int32 array
+ * @brief get the bitmap representation for the int32 array
  */
 AnyType
 bitmap_from_int4array::run(AnyType &args){
@@ -114,7 +115,7 @@ bitmap_from_int4array::run(AnyType &args){
 
 
 /**
- * @brief the in function for the bitmap data type
+ * @brief the in function for the bitmap
  */
 AnyType
 bitmap_in::run(AnyType &args){
@@ -123,7 +124,7 @@ bitmap_in::run(AnyType &args){
 
 
 /**
- * @brief the out function for the bitmap data type
+ * @brief the out function for the bitmap
  */
 AnyType
 bitmap_out::run(AnyType &args){
@@ -132,7 +133,7 @@ bitmap_out::run(AnyType &args){
 
 
 /**
- * @brief get the varbit representation for the bitmap
+ * @brief cast the specified varbit to the bitmap representation
  */
 AnyType
 bitmap_return_varbit::run(AnyType &args){
@@ -141,7 +142,7 @@ bitmap_return_varbit::run(AnyType &args){
 
 
 /**
- * @brief get an integer array from the bitmap.
+ * @brief return the internal representation (array) of the bitmap
  */
 AnyType
 bitmap_return_array::run(AnyType &args){
@@ -150,7 +151,7 @@ bitmap_return_array::run(AnyType &args){
 
 
 /**
- * @brief the implementation of = operator
+ * @brief the implementation of operator =
  */
 AnyType
 bitmap_eq::run(AnyType &args){
@@ -159,7 +160,7 @@ bitmap_eq::run(AnyType &args){
 
 
 /**
- * @brief the implementation of != operator
+ * @brief the implementation of operator !=
  */
 AnyType
 bitmap_neq::run(AnyType &args){
@@ -168,7 +169,7 @@ bitmap_neq::run(AnyType &args){
 
 
 /**
- * @brief the implementation of > operator
+ * @brief the implementation of operator >
  */
 AnyType
 bitmap_gt::run(AnyType &args){
@@ -177,7 +178,7 @@ bitmap_gt::run(AnyType &args){
 
 
 /**
- * @brief the implementation of < operator
+ * @brief the implementation of operator <
  */
 AnyType
 bitmap_lt::run(AnyType &args){
@@ -186,7 +187,7 @@ bitmap_lt::run(AnyType &args){
 
 
 /**
- * @brief the implementation of >= operator
+ * @brief the implementation of operator >=
  */
 AnyType
 bitmap_ge::run(AnyType &args){
@@ -195,7 +196,7 @@ bitmap_ge::run(AnyType &args){
 
 
 /**
- * @brief the implementation of <= operator
+ * @brief the implementation of operator <=
  */
 AnyType
 bitmap_le::run(AnyType &args){

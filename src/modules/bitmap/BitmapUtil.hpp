@@ -24,22 +24,18 @@ protected:
 public:
 
 /**
- * @brief the step function for aggregating the input numbers to
- *        a compressed bitmap.
+ * @brief the step function for aggregating the input numbers to a bitmap.
  *
  * @param args[0]   the array indicating the state
  * @param args[1]   the input number
  * @param args[2]   the number of empty elements will be dynamically
  *                  added to the state array. The default value is 16
  *
- * @return an array indicating the state after inserted the input number.
- * @note the bitmap(UDT) uses integer array as underlying implementation. To
- *       achieve good performance, we will not converting between bitmap and
- *       integer array. Thus, we need to skip the type checks of the C++ AL.
- *          + the input argument is bitmap, we will get it as array.
- *          + the return value is bitmap, we will return it as array. Therefore,
- *            we will explicit set the OID of return value to InvalidOid, so that
- *            later the function getAsDatum will not check its type.
+ * @return the array indicating the state after inserted the input number.
+ * @note the bitmap(UDT) uses an integer array as underlying storage. Therefore,
+ *       we need to skip the type checks of the C++ AL:
+ *          + if the input argument is bitmap, we will get it as array.
+ *          + if the return value is bitmap, we will return it as array.
  *
  */
 template<typename T>
@@ -63,7 +59,7 @@ bitmap_agg_sfunc
         size_per_add = args[2].getAs<int32_t>();
         madlib_assert(size_per_add > 1,
                 std::invalid_argument("the input parameter size_per_add "
-                        "should not greater than 1"));
+                        "should no less than 2"));
 
     }
 
@@ -82,19 +78,12 @@ bitmap_agg_sfunc
 
 
 /**
- * @brief the pre-function for the bitmap aggregation.
+ * @brief the pre-function for the bitmap_agg.
  *
  * @param args[0]   the first state
  * @param args[1]   the second state
  *
  * @return an array of merging the first state and the second state.
- * @note the bitmap(UDT) uses integer array as underlying implementation. To
- *       achieve good performance, we will not converting between bitmap and
- *       integer array. Thus, we need to skip the type checks of the C++ AL.
- *          + the input argument is bitmap, we will get it as array.
- *          + the return value is bitmap, we will return it as array. Therefore,
- *            we will explicit set the OID of return value to InvalidOid, so that
- *            later the function getAsDatum will not check its type.
  *
  */
 template <typename T>
@@ -133,19 +122,12 @@ bitmap_agg_pfunc
 
 
 /**
- * @brief The implementation of AND operation.
+ * @brief The implementation of operator &.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
- * @return the result of args[0] AND args[1].
- * @note the bitmap(UDT) uses integer array as underlying implementation. To
- *       achieve good performance, we will not converting between bitmap and
- *       integer array. Thus, we need to skip the type checks of the C++ AL.
- *          + the input argument is bitmap, we will get it as array.
- *          + the return value is bitmap, we will return it as array. Therefore,
- *            we will explicit set the OID of return value to InvalidOid, so that
- *            later the function getAsDatum will not check its type.
+ * @return the result of args[0] & args[1].
  *
  */
 template<typename T>
@@ -162,19 +144,12 @@ bitmap_and
 
 
 /**
- * @brief The implementation of XOR operation.
+ * @brief The implementation of operator ^.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
- * @return the result of args[0] XOR args[1].
- * @note the bitmap(UDT) uses integer array as underlying implementation. To
- *       achieve good performance, we will not converting between bitmap and
- *       integer array. Thus, we need to skip the type checks of the C++ AL.
- *          + the input argument is bitmap, we will get it as array.
- *          + the return value is bitmap, we will return it as array. Therefore,
- *            we will explicit set the OID of return value to InvalidOid, so that
- *            later the function getAsDatum will not check its type.
+ * @return the result of args[0] ^ args[1].
  *
  */
 template<typename T>
@@ -190,6 +165,13 @@ bitmap_xor
 }
 
 
+/**
+ * @brief the implementation of operator ~
+ *
+ * @param args[0] the bitmap
+ *
+ * @return the result of ~args[0]
+ */
 template<typename T>
 static
 const ArrayType*
@@ -202,19 +184,12 @@ bitmap_not
 }
 
 /**
- * @brief The implementation of  operation.
+ * @brief The implementation of operator |
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
- * @return the result of args[0] OR args[1].
- * @note the bitmap(UDT) uses integer array as underlying implementation. To
- *       achieve good performance, we will not converting between bitmap and
- *       integer array. Thus, we need to skip the type checks of the C++ AL.
- *          + the input argument is bitmap, we will get it as array.
- *          + the return value is bitmap, we will return it as array. Therefore,
- *            we will explicit set the OID of return value to InvalidOid, so that
- *            later the function getAsDatum will not check its type.
+ * @return the result of args[0] | args[1].
  *
  */
 template<typename T>
@@ -231,7 +206,7 @@ bitmap_or
 
 
 /*
- * @brief set the value of the bit to 1/0
+ * @brief set the value of the bit with the specified position to 1/0
  *
  * @param args[0]   the bitmap
  * @param args[1]   the position of the bit
@@ -267,7 +242,7 @@ bitmap_set
  * @param args[0]   the bitmap
  * @param args[1]   the specified bit to be tested
  *
- * @return True if the bit at specified bit in the bitmap is set,
+ * @return True if the bit with the specified position in the bitmap is set,
  *         otherwise, return False;
  */
 template<typename T>
@@ -277,7 +252,6 @@ bitmap_test
 (
     AnyType &args
 ){
-
     madlib_assert(!args[0].isNull() && !args[1].isNull(),
             std::invalid_argument("the input parameters should not be null"));
 
@@ -368,7 +342,7 @@ bitmap_from_array
 
 
 /**
- * @brief the in function for the bitmap data type
+ * @brief the in function for the bitmap
  *
  * @param args[0]   the input string, which should be split by a comma.
  *
@@ -386,7 +360,7 @@ bitmap_in
 
 
 /**
- * @brief the out function for the bitmap data type.
+ * @brief the out function for the bitmap
  *
  * @param args[0]   the bitmap
  *
@@ -422,7 +396,7 @@ bitmap_return_varbit
 
 
 /**
- * @brief convert the bitmap to array.
+ * @brief return the internal representation (array) for the bitmap.
  *
  * @param args[0]   the bitmap
  *
@@ -440,18 +414,13 @@ bitmap_return_array
 
 
 public:
-// comparators
-
 /**
- * @brief the greater than (>) and less than (<) operators implementation
+ * @brief the implementation for operator >
  *
- * @param args[0]   the bitmap array
- * @param args[1]   the bitmap array
+ * @param args[0]   the bitmap
+ * @param args[1]   the bitmap
  *
  * @return args[0] > args[1]
- * @note currently, we will never use the > operator. Therefore, we just
- *       compare the length of the bitmap array for simplicity. This function
- *       will be used in the btree operator class.
  *
  */
 template <typename T>
@@ -466,15 +435,12 @@ bitmap_gt
 
 
 /**
- * @brief the >= and <= operators implementation
+ * @brief the implementation for operator >=
  *
- * @param args[0]   the bitmap array
- * @param args[1]   the bitmap array
+ * @param args[0]   the bitmap
+ * @param args[1]   the bitmap
  *
  * @return args[0] >= args[1]
- * @note currently, we will never use the >= operator. Therefore, we just
- *       compare the length of the bitmap array for simplicity. This function
- *       will be used in the btree operator class.
  *
  */
 template <typename T>
@@ -490,10 +456,10 @@ bitmap_ge
 
 
 /**
- * @brief the = operator implementation
+ * @brief the implementation for operator =
  *
- * @param args[0]   the bitmap array
- * @param args[1]   the bitmap array
+ * @param args[0]   the bitmap
+ * @param args[1]   the bitmap
  *
  * @return args[0] == args[1]
  *
@@ -505,8 +471,6 @@ bitmap_eq
 (
     AnyType &args
 ){
-    // as the first element of bitmap is the size of the array
-    // we don't need to care about the size of the array
     return bitmap_cmp_internal<T>(args) == EQ;
 }
 
@@ -514,8 +478,8 @@ bitmap_eq
 /**
  * @brief compare the two bitmap
  *
- * @param args[0]   the bitmap array
- * @param args[1]   the bitmap array
+ * @param args[0]   the bitmap
+ * @param args[1]   the bitmap
  *
  * @return 0 for equality; 1 for greater than; and -1 for less than
  *

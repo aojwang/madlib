@@ -189,12 +189,12 @@ Bitmap<T>::breakup_compword
 
 
 /**
- * @breif insert the specified bit to the composite word
+ * @breif insert the specified number to the composite word
  *
- * @param number       the position of the input bit
+ * @param number        the input number
  * @param num_words     the number of words in the composite word
  * @param index         the subscript of bitmap array where the input
- *                      bit will be inserted
+ *                      number will be inserted
  */
 template<typename T>
 void
@@ -206,8 +206,6 @@ Bitmap<T>::insert_compword
 ){
     int pos_in_word = get_pos_word(number);
 
-    // if the composite word only contains 1 word and
-    // all of them are zero
     if (1 == num_words){
         m_bitmap[index] = (T)1 << (pos_in_word - 1);
         return;
@@ -289,8 +287,9 @@ Bitmap<T>::append
 
 
 /**
- * @brief if the normal word can be represent as a composite word, we
- *        need to merge it with the previous composite word
+ * @brief if all the available bits of the normal word are 1s/0s, then
+ *        we convert it to a composite word (A). Furthermore, if its previous word
+ *        is composite (B) and they(A and B) have the same sign, then merge them.
  *
  * @param curword   the current word
  * @param i         the index of the current word
@@ -305,12 +304,12 @@ Bitmap<T>::merge_norm_to_comp
     int i
 ){
     T& preword = m_bitmap[i - 1];
-    // the previous word is not a composite word, or
+    // the previous word is not composite, or
     // it represents the maximum composite word for continuous one, or
     // it's a composite word with zero
     if (preword > 0 ||
         !(BM_COMPWORD_ONE(preword)) ||
-        BM_FULL_COMP_ONE(preword)){
+        BM_COMP_ONE_MAX(preword)){
         curword = m_cw_one_mask | 1;
     }else{
         memmove(m_bitmap + i, m_bitmap + (i + 1),
@@ -386,12 +385,12 @@ Bitmap<T>::insert
 
 
 /**
- * @brief get the maximum position of the bit, whose value is 1
+ * @brief get the maximum number represented by the bitmap
  */
 template <typename T>
 inline
 int64_t
-Bitmap<T>::max_position() const{
+Bitmap<T>::max_number() const{
     int64_t res = 0;
     int i = 1;
     T word = 0;
@@ -416,13 +415,13 @@ Bitmap<T>::max_position() const{
 
 
 /**
- * @brief reset the specified position of the bit to 0
+ * @brief remove the specified number from the bitmap
  */
 template <typename T>
 inline
 ArrayType*
 Bitmap<T>::reset(int64_t number){
-    if (number > 0 && number <= max_position()){
+    if (number > 0 && number <= max_number()){
         return Bitmap(4,4).insert(number).op_xor(*this);
     }
 
@@ -1019,6 +1018,8 @@ Bitmap<T>::nonzero_positions(int64_t& size) const{
     size = nonzero_count();
     int64_t* result = NULL;
     if (size > 0){
+        madlib_assert(size < BM_MAX_NUM_BITS,
+                std::runtime_error("too many bits are nonzero"));
         result = new int64_t[size];
         nonzero_positions(result);
     }
@@ -1039,6 +1040,8 @@ ArrayType*
 Bitmap<T>::nonzero_positions() const{
     int64_t* result = NULL;
     int size = nonzero_count();
+    madlib_assert(size < BM_MAX_NUM_BITS,
+            std::runtime_error("too many bits are nonzero"));
     ArrayType* res_arr = alloc_array<int64_t>(result, size);
     nonzero_positions(result);
 
@@ -1061,6 +1064,8 @@ inline
 char*
 Bitmap<T>::to_string() const{
     int64_t size = nonzero_count();
+    madlib_assert(size < BM_MAX_NUM_BITS,
+            std::runtime_error("too many bits are nonzero"));
     int64_t* result = new int64_t[size + 1];
     nonzero_positions(result);
 

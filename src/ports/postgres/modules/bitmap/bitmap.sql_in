@@ -302,8 +302,8 @@ CREATE AGGREGATE MADLIB_SCHEMA.bitmap_agg
 /*
  * @brief The implementation of AND operation.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
  * @return the result of args[0] AND args[1].
  */
@@ -321,8 +321,8 @@ IMMUTABLE STRICT;
 /*
  * @brief The implementation of OR operation.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
  * @return the result of args[0] OR args[1].
  */
@@ -340,8 +340,8 @@ IMMUTABLE STRICT;
 /*
  * @brief The implementation of XOR operation.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
  * @return the result of args[0] XOR args[1].
  */
@@ -359,7 +359,7 @@ IMMUTABLE STRICT;
 /*
  * @brief The implementation of NOT operation.
  *
- * @param args[0]   the bitmap array
+ * @param args[0]   the bitmap
  *
  * @return the result of !args[0].
  */
@@ -418,7 +418,7 @@ IMMUTABLE;
 /*
  * @brief get the positions of the non-zero bits
  *
- * @param args[0]   the bitmap array
+ * @param args[0]   the bitmap
  *
  * @return the array contains the positions of the non-zero bits.
  * @note the position starts from 1.
@@ -437,7 +437,7 @@ IMMUTABLE STRICT;
 /*
  * @brief get the number of bits whose value is 1.
  *
- * @param args[0]   the bitmap array
+ * @param args[0]   the bitmap
  *
  * @return the count of non-zero bits in the bitmap.
  *
@@ -524,8 +524,8 @@ IMMUTABLE STRICT;
 /*
  * @brief The implementation of = operation.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
  * @return the result of args[0] = args[1].
  */
@@ -543,8 +543,8 @@ IMMUTABLE STRICT;
 /*
  * @brief The implementation of <> operation.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
  * @return the result of args[0] <> args[1].
  */
@@ -562,13 +562,13 @@ IMMUTABLE STRICT;
 /*
  * @brief The implementation of > operation.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
  * @return the result of args[0] > args[1].
  * @note it doesn't make sense to compare two bitmap. 
  *       However, the btree index need this operation. 
- *       Here, we just simple compare the two bitmap arrays
+ *       Here, we just simple compare the two bitmaps
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_gt
 (
@@ -584,13 +584,13 @@ IMMUTABLE STRICT;
 /*
  * @brief The implementation of < operation.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
  * @return the result of args[0] < args[1].
  * @note it doesn't make sense to compare two bitmap. 
  *       However, the btree index need this operation. 
- *       Here, we just simple compare the two bitmap arrays
+ *       Here, we just simple compare the two bitmaps
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_lt
 (
@@ -606,13 +606,13 @@ IMMUTABLE STRICT;
 /*
  * @brief The implementation of >= operation.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
  * @return the result of args[0] >= args[1].
  * @note it doesn't make sense to compare two bitmap. 
  *       However, the btree index need this operation. 
- *       Here, we just simple compare the two bitmap arrays
+ *       Here, we just simple compare the two bitmaps
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_ge
 (
@@ -628,13 +628,13 @@ IMMUTABLE STRICT;
 /*
  * @brief The implementation of <= operation.
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
  * @return the result of args[0] <= args[1].
  * @note it doesn't make sense to compare two bitmap. 
  *       However, the btree index need this operation. 
- *       Here, we just simple compare the two bitmap arrays
+ *       Here, we just simple compare the two bitmaps
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_le
 (
@@ -650,13 +650,13 @@ IMMUTABLE STRICT;
 /*
  * @brief compare two bitmaps
  *
- * @param args[0]   the first bitmap array
- * @param args[1]   the second bitmap array
+ * @param args[0]   the first bitmap
+ * @param args[1]   the second bitmap
  *
  * @return 0 for equality; 1 for greater than; and -1 for less than.
  * @note it doesn't make sense to compare two bitmap. 
  *       However, the btree index need this operation. 
- *       Here, we just simple compare the two bitmap arrays
+ *       Here, we just simple compare the two bitmaps
  */
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.bitmap_cmp
 (

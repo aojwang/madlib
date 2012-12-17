@@ -3,6 +3,13 @@
 
 #include <dbconnector/dbconnector.hpp>
 
+
+namespace madlib {
+namespace modules {
+namespace bitmap {
+
+using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
+
 // the public interfaces for bitmap
 #define RETURN_BITMAP_INTERNAL(val, T) \
             return AnyType(ArrayHandle<T>(val), false, false)
@@ -31,37 +38,31 @@
 #define GETARG_CLONED_BITMAP(arg)      GETARG_CLONED_BITMAP_INTERNAL(arg, int32_t)
 #define GETARG_IMMUTABLE_BITMAP(arg)   GETARG_IMMUTABLE_BITMAP_INTERNAL(arg, int32_t)
 
-
-namespace madlib {
-namespace modules {
-namespace bitmap {
-
-using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
-
-#define INT64FORMAT  "%lld"
+#define INT64FORMAT     "%lld"
 #define MAXBITSOFINT64  25
 #define BYTESIZE        8
 
-#define DEFAULT_SIZE_PER_ADD 16
-#define EMTYP_BITMAP Bitmap(1, DEFAULT_SIZE_PER_ADD)
+#define DEFAULT_SIZE_PER_ADD    16
+#define EMTYP_BITMAP            Bitmap(1, DEFAULT_SIZE_PER_ADD)
 
-#define BM_BASE         (sizeof(T) * BYTESIZE - 1)
-#define BM_WORDCNT_MASK (((T)1 << (BM_BASE - 1)) - 1)
-#define BM_CW_ZERO_MASK ((T)1 << BM_BASE)
-#define BM_CW_ONE_MASK  ((T)3 << (BM_BASE - 1))
+#define BM_BASE             (sizeof(T) * BYTESIZE - 1)
+#define BM_WORDCNT_MASK     (((T)1 << (BM_BASE - 1)) - 1)
+#define BM_CW_ZERO_MASK     ((T)1 << BM_BASE)
+#define BM_CW_ONE_MASK      ((T)3 << (BM_BASE - 1))
+#define BM_MAX_NUM_BITS     (1 << 25)
 
 // the following macros will be used to calculate the number of 1s in an integer
-#define BM_POW(c, T) ((T)1<<(c))
-#define BM_MASK(c, T) (((T)-1) / (BM_POW(BM_POW(c, T), T) + 1))
-#define BM_ROUND(n, c, T) (((n) & BM_MASK(c, T)) + ((n) >> BM_POW(c, T) & BM_MASK(c, T)))
+#define BM_POW(c, T)        ((T)1<<(c))
+#define BM_MASK(c, T)       (((T)-1) / (BM_POW(BM_POW(c, T), T) + 1))
+#define BM_ROUND(n, c, T)   (((n) & BM_MASK(c, T)) + ((n) >> BM_POW(c, T) & BM_MASK(c, T)))
 
 // align the 'val' with 'align' length
-#define BM_ALIGN(val, align) ((((val) + (align) - 1) / (align)) * (align))
+#define BM_ALIGN(val, align)    ((((val) + (align) - 1) / (align)) * (align))
 
 // does the composite word represent continuous 1s
-#define BM_COMPWORD_ONE(val) (((val) & (m_wordcnt_mask + 1)) > 0)
+#define BM_COMPWORD_ONE(val)    (((val) & (m_wordcnt_mask + 1)) > 0)
 // does the composite word represent continuous 0s
-#define BM_COMPWORD_ZERO(val) (((val) & (m_wordcnt_mask + 1)) == 0)
+#define BM_COMPWORD_ZERO(val)   (((val) & (m_wordcnt_mask + 1)) == 0)
 // change a composite word with 1s/0s to a composite word with 0s/1s
 #define BM_COMPWORD_SWAP(val) \
     BM_NUMWORDS_IN_COMP(val) | (((val) & m_cw_one_mask) ^ (m_wordcnt_mask + 1))
@@ -71,19 +72,16 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
                                (0 == (((lhs) ^ (rhs)) & (m_wordcnt_mask + 1))))
 
 // get the number of words for representing the input number
-#define BM_NUMWORDS_FOR_BITS(val) (((val) + m_base - 1) / m_base)
-
+#define BM_NUMWORDS_FOR_BITS(val)   (((val) + m_base - 1) / m_base)
 // get the number of words in the composite word
-#define BM_NUMWORDS_IN_COMP(val) ((val) & m_wordcnt_mask)
-#define BM_NUMBITS_IN_COMP(val) BM_NUMWORDS_IN_COMP(val) * m_base
+#define BM_NUMWORDS_IN_COMP(val)    ((val) & m_wordcnt_mask)
+#define BM_NUMBITS_IN_COMP(val)     BM_NUMWORDS_IN_COMP(val) * m_base
 #define BM_BIT_TEST(val, bit)  \
-            val > 0 ? \
-            (((val) & (1 << ((bit) - 1))) > 0) : \
-            BM_COMPWORD_ONE(val)
+         ((val) > 0 ?  (((val) & (1 << ((bit) - 1))) > 0) : BM_COMPWORD_ONE(val))
 
-
-#define BM_FULL_COMP_ONE(val) (val == ((T)-1))
-#define BM_FULL_COMP_ZERO(val) (val == (m_wordcnt_mask | m_cw_zero_mask))
+// the maximum value for a composite word with continuous 1s/0s
+#define BM_COMP_ONE_MAX(val)   (val == ((T)-1))
+#define BM_COMP_ZERO_MAX(val)  (val == (m_wordcnt_mask | m_cw_zero_mask))
 
 // get the maximum 0s or 1s can be represented by a composite word
 // for bitmap4, its 0x3F FF FF FF.
@@ -108,7 +106,7 @@ using madlib::dbconnector::postgres::madlib_get_typlenbyvalalign;
 
 #define BM_CHECK_ARRAY_SIZE(array, size)     \
         madlib_assert((NULL != (array)) && (size == (array)[0]), \
-        std::invalid_argument("invalid bitmap array"));
+        std::invalid_argument("invalid bitmap"));
 
 /**
  * the class for building and manipulating the bitmap.
@@ -149,15 +147,15 @@ public:
 
     // construct a bitmap for the input string
     // the format of input string looks like "1,3,19,20".
-    // we use comma to split the numbers
+    // we use comma to separate the numbers
     Bitmap(char* rhs);
 
-    // if the bitmap array was reallocated, the flag will be set to true
+    // if the bitmap was reallocated, the flag will be set to true
     inline bool updated() const{
         return m_bitmap_updated;
     }
 
-    // is the bitmap array full
+    // is the bitmap full
     inline bool full() const{
         return m_size == m_capacity;
     }
@@ -204,14 +202,14 @@ public:
     inline int64_t nonzero_count() const;
 
 protected:
-    // insert a bit 1 to the composite word
+    // insert the specified number to the composite word
     inline void insert_compword(int64_t number, int64_t num_words, int index);
 
-    // breakup composite word, and insert the specified bit
+    // breakup the composite word, and insert the number to it
     inline void breakup_compword (T* newbitmap, int index,
             int pos_in_word, int word_pos, int num_words);
 
-    // append a bit 1 to the bitmap
+    // append a number to the bitmap
     inline void append(int64_t number);
 
     // merge a normal word to a composite word
@@ -241,7 +239,7 @@ protected:
     // lhs & rhs. If both lhs and rhs are composite words, then return
     // the sign of the result
     inline T bitwise_and(T lhs, T rhs) const;
-    // the post-processing for the AND operation. Here, we need do nothing,
+    // the post-processing for the AND operation. Here, we do nothing,
     // since the result of any words & zero is zero.
     inline int and_postproc(T*, int k, const Bitmap<T>&, int, T, T) const{
         return k;
@@ -290,7 +288,7 @@ protected:
     inline int64_t* nonzero_positions(int64_t& size) const;
 
     // retrieve the max number stored in the bitmap
-    inline int64_t max_position() const;
+    inline int64_t max_number() const;
 
     // allocate a new array with ArrayType encapsulated
     // X is the type of the array, we need to search the type
